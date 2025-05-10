@@ -1,0 +1,354 @@
+<div class="diagram-editor-container">
+    <!-- Toolbar -->
+    <div class="toolbar">
+        <div class="toolbar-section">
+            <button mat-raised-button color="primary" (click)="createNewDiagram()">
+                <mat-icon>add</mat-icon>
+                New Diagram
+            </button>
+            <button mat-raised-button color="primary" (click)="createNewNode()">
+                <mat-icon>add_box</mat-icon>
+                Add Table
+            </button>
+            <button mat-raised-button color="primary" [disabled]="isCreatingLink" (click)="isCreatingLink = false">
+                <mat-icon>{{ isCreatingLink ? 'cancel' : 'add_link' }}</mat-icon>
+                {{ isCreatingLink ? 'Cancel Link' : 'Add Relationship' }}
+            </button>
+        </div>
+
+        <div class="toolbar-section">
+            <button mat-icon-button color="accent" [disabled]="!canUndo()" (click)="undo()" matTooltip="Undo">
+                <mat-icon>undo</mat-icon>
+            </button>
+            <button mat-icon-button color="accent" [disabled]="!canRedo()" (click)="redo()" matTooltip="Redo">
+                <mat-icon>redo</mat-icon>
+            </button>
+        </div>
+
+        <div class="toolbar-section">
+            <button mat-raised-button color="accent" (click)="saveDiagram()">
+                <mat-icon>save</mat-icon>
+                Save
+            </button> <button mat-raised-button (click)="exportDiagram()">
+                <mat-icon>cloud_download</mat-icon>
+                Export JSON
+            </button>
+            <button mat-raised-button (click)="exportAsSqlDdl()">
+                <mat-icon>storage</mat-icon>
+                Export SQL
+            </button>
+            <button mat-raised-button (click)="exportAsGraphQLSdl()">
+                <mat-icon>code</mat-icon>
+                Export GraphQL
+            </button>
+            <button mat-raised-button (click)="openImportDialog()">
+                <mat-icon>cloud_upload</mat-icon>
+                Import
+            </button>
+            <!-- Hidden file input for import -->
+            <input #fileInput type="file" (change)="importDiagram($event)" accept=".json" style="display: none;">
+        </div>
+
+        <div class="toolbar-section">
+            <button mat-icon-button color="primary" (click)="toggleGridSnap()" matTooltip="Toggle Grid Snap">
+                <mat-icon>{{ gridSnapEnabled ? 'grid_on' : 'grid_off' }}</mat-icon>
+            </button>
+        </div>
+    </div> <!-- Graph container -->
+    <div class="graph-container" [class.grid-enabled]="gridSnapEnabled">
+        <!-- Debug info for visibility testing -->
+        <div *ngIf="nodes.length > 0" class="debug-info">
+            Nodes count: {{nodes.length}} | Links count: {{links.length}}
+        </div> <!-- Test nodes for direct DOM rendering -->
+        <div class="test-nodes">
+            <div *ngFor="let node of nodes" class="test-node" [class.selected]="selectedNode?.id === node.id"
+                [class.creating-link]="isCreatingLink"
+                [class.link-source]="isCreatingLink && sourceNodeForLink === node.id" [style.left.px]="node.x"
+                [style.top.px]="node.y" [style.width.px]="node.dimension?.width || 200"
+                [style.height.px]="(node.columns?.length || 1) * 30 + 40"
+                [style.background-color]="node.metadata?.style?.backgroundColor || '#1976d2'"
+                (click)="onNodeSelect(node)" (mousedown)="startDragging($event, node)" [attr.data-node-id]="node.id">
+                <div class="test-node-header">{{ node.name || node.label }}</div>
+                <div class="test-node-columns">
+                    <div *ngFor="let column of node.columns; let i = index" class="test-column"
+                        [class.primary-key]="column.isPrimaryKey" [class.foreign-key]="column.isForeignKey"
+                        (contextmenu)="openColumnMenu($event, node.id, i, column)">
+                        {{ column.name }}: {{ column.dataType }}
+                        <span *ngIf="column.isPrimaryKey" class="key-indicator">🔑</span>
+                        <span *ngIf="column.isForeignKey" class="key-indicator">🔗</span>
+                    </div>
+                </div>
+                <div class="test-node-actions">
+                    <button class="action-btn" (click)="$event.stopPropagation(); addColumn(node.id)"
+                        title="Add Column">+</button>
+                    <button class="action-btn"
+                        (click)="$event.stopPropagation(); updateNode(node.id, { name: prompt('Table name:', node.name) })"
+                        title="Rename">✏️</button>
+                    <button class="action-btn danger" (click)="$event.stopPropagation(); removeNode(node.id)"
+                        title="Delete">🗑️</button>
+                </div>
+            </div>
+        </div><ngx-graph class="graph" [nodes]="nodes" [links]="links" [scheme]="colorScheme" [update$]="update$"
+            [enableZoom]="true" [autoZoom]="false" [autoCenter]="true" [panOnZoom]="true" [draggingEnabled]="true"
+            [panOffsetX]="0" [panOffsetY]="0" [layout]="'dagre'" [layoutSettings]="layoutSettings" [curve]="'basis'"
+            (select)="onNodeSelect($any($event))" (linkSelect)="onLinkSelect($any($event))"
+            (nodePositionChange)="onNodePositionChange($any($event))" #graph><!-- Node Template -->
+            <ng-template #nodeTemplate let-node>
+                <div class="node-wrapper entity-node" [class.selected]="selectedNode?.id === node.id"
+                    [class.creating-link]="isCreatingLink"
+                    [class.link-source]="isCreatingLink && sourceNodeForLink === node.id" (click)="onNodeSelect(node)">
+
+                    <div class="entity-header" [attr.data-node-id]="node.id">
+                        <div class="entity-title">{{ node.name }}</div>
+                        <div class="entity-actions">
+                            <button mat-icon-button [matMenuTriggerFor]="nodeMenu" (click)="$event.stopPropagation()">
+                                <mat-icon>more_vert</mat-icon>
+                            </button>
+
+                            <!-- Node Menu -->
+                            <mat-menu #nodeMenu="matMenu"> <button mat-menu-item
+                                    (click)="updateNode(node.id, { name: prompt('Table name:', node.name) })">
+                                    <mat-icon>edit</mat-icon>
+                                    Rename
+                                </button>
+                                <button mat-menu-item (click)="addColumn(node.id)">
+                                    <mat-icon>add</mat-icon>
+                                    Add Column
+                                </button>
+                                <button mat-menu-item *ngIf="!isCreatingLink" (click)="startLinkCreation(node.id)">
+                                    <mat-icon>link</mat-icon>
+                                    Create Relationship
+                                </button>
+                                <button mat-menu-item (click)="removeNode(node.id)">
+                                    <mat-icon>delete</mat-icon>
+                                    Delete Table
+                                </button>
+                            </mat-menu>
+                        </div>
+                    </div>
+
+                    <!-- Columns -->
+                    <div class="entity-columns">
+                        <div *ngFor="let column of node.columns; let i = index" class="entity-column"
+                            [class.primary-key]="column.isPrimaryKey" [class.foreign-key]="column.isForeignKey"
+                            (contextmenu)="openColumnMenu($event, node.id, i, column)">
+                            <div class="column-info">
+                                <span class="column-name">{{ column.name }}</span>
+                                <span class="column-type">{{ column.dataType }}</span>
+                            </div>
+
+                            <div class="column-actions">
+                                <button mat-icon-button [matMenuTriggerFor]="columnMenu"
+                                    (click)="$event.stopPropagation()">
+                                    <mat-icon>more_horiz</mat-icon>
+                                </button>
+
+                                <!-- Column Menu -->
+                                <mat-menu #columnMenu="matMenu"> <button mat-menu-item
+                                        (click)="updateColumn(node.id, i, { name: prompt('Column name:', column.name) })">
+                                        <mat-icon>edit</mat-icon>
+                                        Rename
+                                    </button>
+                                    <button mat-menu-item
+                                        (click)="updateColumn(node.id, i, { dataType: prompt('Data type:', column.dataType) })">
+                                        <mat-icon>code</mat-icon>
+                                        Change Type
+                                    </button>
+                                    <button mat-menu-item
+                                        (click)="updateColumn(node.id, i, { isPrimaryKey: !column.isPrimaryKey })">
+                                        <mat-icon>{{ column.isPrimaryKey ? 'clear' : 'vpn_key' }}</mat-icon>
+                                        {{ column.isPrimaryKey ? 'Remove Primary Key' : 'Set as Primary Key' }}
+                                    </button>
+                                    <button mat-menu-item
+                                        (click)="updateColumn(node.id, i, { isForeignKey: !column.isForeignKey })">
+                                        <mat-icon>{{ column.isForeignKey ? 'clear' : 'link' }}</mat-icon>
+                                        {{ column.isForeignKey ? 'Remove Foreign Key' : 'Set as Foreign Key' }}
+                                    </button>
+                                    <button mat-menu-item
+                                        (click)="updateColumn(node.id, i, { isNullable: !column.isNullable })">
+                                        <mat-icon>{{ column.isNullable ? 'check_box' : 'check_box_outline_blank'
+                                            }}</mat-icon>
+                                        {{ column.isNullable ? 'Set as NOT NULL' : 'Set as NULL' }}
+                                    </button>
+                                    <button mat-menu-item (click)="removeColumn(node.id, i)">
+                                        <mat-icon>delete</mat-icon>
+                                        Delete Column
+                                    </button>
+                                </mat-menu>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </ng-template>
+
+            <!-- Link Template -->
+            <ng-template #linkTemplate let-link>
+                <svg:g class="edge" [class.selected]="selectedLink?.id === link.id">
+                    <svg:path class="edge-path" [attr.stroke-width]="2" marker-end="url(#arrow)">
+                    </svg:path>
+
+                    <svg:text class="edge-label" text-anchor="middle" alignment-baseline="central"
+                        [attr.font-size]="12">
+                        {{ link.label || link.type }}
+                    </svg:text>
+
+                    <svg:g class="edge-actions" (click)="$event.stopPropagation()">
+                        <svg:circle r="12" cx="0" cy="0" fill="#fff" stroke="#ccc"></svg:circle>
+                        <svg:g transform="translate(-6, -6) scale(0.8)">
+                            <svg:path
+                                d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"
+                                fill="#666"></svg:path>
+                        </svg:g>
+                        <svg:rect width="100" height="100" fill="transparent" (click)="onLinkSelect(link)"></svg:rect>
+                    </svg:g>
+                </svg:g>
+            </ng-template>
+
+            <!-- Edge Arrow Marker -->
+            <svg:defs>
+                <svg:marker id="arrow" viewBox="0 -5 10 10" refX="8" refY="0" markerWidth="6" markerHeight="6"
+                    orient="auto">
+                    <svg:path d="M0,-5L10,0L0,5" class="arrow-head"></svg:path>
+                </svg:marker>
+            </svg:defs>
+
+        </ngx-graph>
+    </div>
+
+    <!-- Properties panel (when node is selected) -->
+    <div class="properties-panel" *ngIf="selectedNode || selectedLink">
+        <div class="panel-header">
+            <h3>{{ selectedNode ? 'Table Properties' : 'Relationship Properties' }}</h3>
+            <button mat-icon-button (click)="selectedNode = null; selectedLink = null">
+                <mat-icon><code></code>lose</mat-icon>
+            </button>
+        </div>
+
+        <div class="panel-content">
+            <!-- Node Properties -->
+            <div *ngIf="selectedNode">
+                <mat-form-field class="full-width">
+                    <mat-label>Table Name</mat-label>
+                    <input matInput [value]="selectedNode.name"
+                        (change)="updateNode(selectedNode.id, { name: $any($event.target).value })">
+                </mat-form-field>
+
+                <h4>Columns</h4>
+                <div class="columns-list">
+                    <div class="column-item" *ngFor="let column of selectedNode.columns; let i = index">
+                        <div class="column-details">
+                            <mat-form-field class="column-name-field">
+                                <mat-label>Name</mat-label>
+                                <input matInput [value]="column.name"
+                                    (change)="updateColumn(selectedNode.id, i, { name: $any($event.target).value })">
+                            </mat-form-field>
+
+                            <mat-form-field class="column-type-field">
+                                <mat-label>Type</mat-label>
+                                <input matInput [value]="column.dataType"
+                                    (change)="updateColumn(selectedNode.id, i, { dataType: $any($event.target).value })">
+                            </mat-form-field>
+                        </div>
+
+                        <div class="column-flags">
+                            <mat-checkbox [checked]="column.isPrimaryKey"
+                                (change)="updateColumn(selectedNode.id, i, { isPrimaryKey: $event.checked })">
+                                PK
+                            </mat-checkbox>
+
+                            <mat-checkbox [checked]="column.isForeignKey"
+                                (change)="updateColumn(selectedNode.id, i, { isForeignKey: $event.checked })">
+                                FK
+                            </mat-checkbox>
+
+                            <mat-checkbox [checked]="column.isNullable"
+                                (change)="updateColumn(selectedNode.id, i, { isNullable: $event.checked })">
+                                NULL
+                            </mat-checkbox>
+
+                            <button mat-icon-button color="warn" (click)="removeColumn(selectedNode.id, i)">
+                                <mat-icon>delete</mat-icon>
+                            </button>
+                        </div>
+                    </div>
+
+                    <button mat-stroked-button color="primary" (click)="addColumn(selectedNode.id)">
+                        <mat-icon>add</mat-icon>
+                        Add Column
+                    </button>
+                </div>
+            </div>
+
+            <!-- Link Properties -->
+            <div *ngIf="selectedLink">
+                <mat-form-field class="full-width">
+                    <mat-label>Relationship Type</mat-label>
+                    <mat-select [value]="selectedLink.type"
+                        (selectionChange)="updateLink(selectedLink.id, { type: $event.value, label: $event.value })">
+                        <mat-option [value]="RelationType.OneToOne">One-to-One (1:1)</mat-option>
+                        <mat-option [value]="RelationType.OneToMany">One-to-Many (1:N)</mat-option>
+                        <mat-option [value]="RelationType.ManyToOne">Many-to-One (N:1)</mat-option>
+                        <mat-option [value]="RelationType.ManyToMany">Many-to-Many (N:M)</mat-option>
+                    </mat-select>
+                </mat-form-field>
+
+                <mat-form-field class="full-width">
+                    <mat-label>Custom Label</mat-label>
+                    <input matInput [value]="selectedLink.label"
+                        (change)="updateLink(selectedLink.id, { label: $any($event.target).value })">
+                </mat-form-field>
+
+                <div class="button-row">
+                    <button mat-raised-button color="warn" (click)="removeLink(selectedLink.id)">
+                        <mat-icon>delete</mat-icon>
+                        Delete Relationship
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add a context menu for columns that uses MatMenu -->
+    <div style="position: absolute; visibility: hidden">
+        <div #columnContextMenuTrigger="matMenuTrigger" [matMenuTriggerFor]="columnContextMenu"></div>
+        <mat-menu #columnContextMenu="matMenu">
+            <button mat-menu-item (click)="renameColumn()">
+                <mat-icon>edit</mat-icon>
+                <span>Rename</span>
+            </button>
+            <button mat-menu-item (click)="changeColumnType()">
+                <mat-icon>code</mat-icon>
+                <span>Change Type</span>
+            </button>
+            <button mat-menu-item (click)="togglePrimaryKey()">
+                <mat-icon>{{ selectedColumn?.isPrimaryKey ? 'clear' : 'vpn_key' }}</mat-icon>
+                <span>{{ selectedColumn?.isPrimaryKey ? 'Remove Primary Key' : 'Set as Primary Key' }}</span>
+            </button>
+            <button mat-menu-item (click)="toggleForeignKey()">
+                <mat-icon>{{ selectedColumn?.isForeignKey ? 'clear' : 'link' }}</mat-icon>
+                <span>{{ selectedColumn?.isForeignKey ? 'Remove Foreign Key' : 'Set as Foreign Key' }}</span>
+            </button>
+            <button mat-menu-item (click)="toggleNullable()">
+                <mat-icon>{{ selectedColumn?.isNullable ? 'check_box' : 'check_box_outline_blank' }}</mat-icon>
+                <span>{{ selectedColumn?.isNullable ? 'Set as NOT NULL' : 'Set as NULL' }}</span>
+            </button>
+            <button mat-menu-item (click)="deleteColumn()" class="warn-menu-item">
+                <mat-icon color="warn">delete</mat-icon>
+                <span class="warn-text">Delete Column</span>
+            </button>
+        </mat-menu>
+    </div>
+
+    <!-- Zoom Controls -->
+    <div class="zoom-controls">
+        <button mat-icon-button (click)="zoomIn()" matTooltip="Zoom In">
+            <mat-icon>zoom_in</mat-icon>
+        </button>
+        <button mat-icon-button (click)="resetZoom()" matTooltip="Reset Zoom">
+            <mat-icon>center_focus_strong</mat-icon>
+        </button>
+        <button mat-icon-button (click)="zoomOut()" matTooltip="Zoom Out">
+            <mat-icon>zoom_out</mat-icon>
+        </button>
+    </div>
+</div>

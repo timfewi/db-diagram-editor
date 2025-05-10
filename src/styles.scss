@@ -1,1 +1,63 @@
-/* You can add global styles to this file, and also import other style files */
+@use '@angular/material' as mat;
+@include mat.core();
+
+// Legacy M2 palette functions are now m2-prefixed
+$primary: mat.m2-define-palette(mat.$m2-blue-palette, 700);
+$accent:  mat.m2-define-palette(mat.$m2-teal-palette, 500);
+$warn:    mat.m2-define-palette(mat.$m2-red-palette,  500);
+
+// Likewise define-light-theme → m2-define-light-theme
+$theme: mat.m2-define-light-theme((
+  color: (
+    primary: $primary,
+    accent:  $accent,
+    warn:    $warn,
+  ),
+  typography: mat.m2-define-typography-config(),  // see next step
+  density: 0,
+));
+@include mat.all-component-themes($theme);
+
+/* Global styles */
+html,
+body {
+    height: 100%;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    font-family: Roboto, "Helvetica Neue", sans-serif;
+    overflow: hidden;
+}
+
+app-root {
+    display: block;
+    height: 100%;
+    width: 100%;
+}
+
+/* Utility classes */
+.full-width {
+    width: 100%;
+}
+
+.text-center {
+    text-align: center;
+}
+
+.mt-2 {
+    margin-top: 16px;
+}
+
+.mb-2 {
+    margin-bottom: 16px;
+}
+
+/* ngx-graph customizations */
+.ngx-charts-tooltip-content {
+    background: rgba(255, 255, 255, 0.95) !important;
+    color: rgba(0, 0, 0, 0.87) !important;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2) !important;
+    border-radius: 4px !important;
+    padding: 8px 12px !important;
+    font-size: 12px !important;
+}

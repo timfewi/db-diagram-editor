@@ -1,0 +1,472 @@
+/* Container for the entire diagram editor */
+.diagram-editor-container {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+    position: relative;
+}
+
+/* Toolbar styles */
+.toolbar {
+    display: flex;
+    justify-content: space-between;
+    padding: 10px 16px;
+    background-color: #f5f5f5;
+    border-bottom: 1px solid #ddd;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+    z-index: 10;
+
+    .toolbar-section {
+        display: flex;
+        gap: 8px;
+    }
+
+    button {
+        mat-icon {
+            margin-right: 4px;
+        }
+    }
+}
+
+/* Graph container */
+.graph-container {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+    background-color: #fafafa;
+    background-image:
+        linear-gradient(rgba(0, 0, 0, 0.1) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0, 0, 0, 0.1) 1px, transparent 1px);
+    background-size: 20px 20px;
+    min-height: 500px;
+    /* Ensure minimum height for visibility */
+    border: 1px solid #ddd;
+    /* Add border to see the container */
+
+    // When grid snap is enabled, make the grid more visible
+    &.grid-enabled {
+        background-image:
+            linear-gradient(rgba(0, 0, 0, 0.15) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(0, 0, 0, 0.15) 1px, transparent 1px);
+        background-size: 20px 20px;
+    }
+
+    /* Ensure ngx-graph takes the full container space */
+    .graph {
+        width: 100%;
+        height: 100%;
+        min-height: 500px;
+    }
+
+    /* Debug info panel */
+    .debug-info {
+        position: absolute;
+        top: 10px;
+        left: 10px;
+        background: rgba(255, 255, 255, 0.8);
+        padding: 5px 10px;
+        border-radius: 4px;
+        z-index: 100;
+        font-size: 12px;
+        color: #333;
+        border: 1px solid #ccc;
+    }
+}
+
+
+/* Entity node styles */
+.entity-node {
+    background-color: white;
+    border-radius: 4px;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+    min-width: 200px;
+    transition: box-shadow 0.3s ease;
+    cursor: pointer;
+    user-select: none;
+    overflow: hidden;
+
+    &.selected {
+        box-shadow: 0 0 0 2px #1976d2, 0 2px 8px rgba(0, 0, 0, 0.2);
+    }
+
+    &.creating-link {
+        cursor: alias;
+    }
+
+    &.link-source {
+        box-shadow: 0 0 0 2px #4caf50, 0 2px 8px rgba(0, 0, 0, 0.2);
+    }
+
+    .entity-header {
+        background-color: #1976d2;
+        color: white;
+        padding: 10px 12px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+
+        .entity-title {
+            font-weight: bold;
+            font-size: 16px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .entity-actions {
+            display: flex;
+
+            button {
+                color: white;
+                width: 28px;
+                height: 28px;
+                line-height: 28px;
+
+                mat-icon {
+                    font-size: 18px;
+                    width: 18px;
+                    height: 18px;
+                    line-height: 18px;
+                }
+            }
+        }
+    }
+
+    .entity-columns {
+        padding: 8px 0;
+
+        .entity-column {
+            display: flex;
+            justify-content: space-between;
+            padding: 4px 12px;
+            border-bottom: 1px solid #eee;
+            font-size: 14px;
+
+            &:last-child {
+                border-bottom: none;
+            }
+
+            &.primary-key {
+                .column-name::before {
+                    content: "🔑 ";
+                }
+            }
+
+            &.foreign-key {
+                .column-name::before {
+                    content: "🔗 ";
+                }
+            }
+
+            .column-info {
+                display: flex;
+                gap: 8px;
+                align-items: center;
+                overflow: hidden;
+
+                .column-name {
+                    white-space: nowrap;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                }
+
+                .column-type {
+                    color: #666;
+                    font-size: 12px;
+                }
+            }
+
+            .column-actions {
+                button {
+                    width: 24px;
+                    height: 24px;
+                    line-height: 24px;
+
+                    mat-icon {
+                        font-size: 16px;
+                        width: 16px;
+                        height: 16px;
+                        line-height: 16px;
+                    }
+                }
+            }
+        }
+    }
+}
+
+/* Edge/Link styles */
+:host ::ng-deep {
+    .edge {
+        cursor: pointer;
+
+        .edge-path {
+            stroke: #666;
+            fill: none;
+        }
+
+        .edge-label {
+            fill: #333;
+            font-size: 12px;
+        }
+
+        .arrow-head {
+            fill: #666;
+        }
+
+        &.selected {
+            .edge-path {
+                stroke: #1976d2;
+                stroke-width: 3px;
+            }
+
+            .arrow-head {
+                fill: #1976d2;
+            }
+
+            .edge-label {
+                fill: #1976d2;
+                font-weight: bold;
+            }
+        }
+
+        .edge-actions {
+            cursor: pointer;
+            opacity: 0.5;
+            transition: opacity 0.2s ease;
+
+            &:hover {
+                opacity: 1;
+            }
+        }
+    }
+}
+
+/* Properties panel */
+.properties-panel {
+    position: absolute;
+    top: 60px;
+    right: 20px;
+    width: 300px;
+    background: white;
+    border-radius: 4px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+    z-index: 1000;
+    padding: 16px;
+    cursor: move;
+    /* Show drag cursor */
+    user-select: none;
+    /* Prevent text selection while dragging */
+
+    .panel-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 16px;
+        cursor: move;
+
+        h3 {
+            margin: 0;
+            font-size: 18px;
+            font-weight: 500;
+        }
+    }
+
+    .panel-content {
+        cursor: default;
+        /* Reset cursor for the content area */
+    }
+
+    &.dragging {
+        opacity: 0.9;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+    }
+
+    /* Make form fields take full width */
+    .full-width {
+        width: 100%;
+    }
+}
+
+/* Helper classes */
+.success-notification {
+    background-color: #4caf50;
+    color: white;
+}
+
+.error-notification {
+    background-color: #f44336;
+    color: white;
+}
+
+/* Test nodes for direct DOM rendering */
+.test-nodes {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 1000;
+    /* Enable pointer events for interaction */
+    pointer-events: auto;
+}
+
+.test-node {
+    position: absolute;
+    background-color: #1976d2;
+    color: white;
+    padding: 10px;
+    border-radius: 4px;
+    min-width: 180px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+    z-index: 1100;
+    pointer-events: auto;
+    /* Enable pointer events for interaction */
+    font-size: 14px;
+    font-weight: bold;
+    border: 2px solid #0d47a1;
+    overflow: hidden;
+    cursor: pointer;
+    /* Add cursor to indicate it's interactive */
+    transition: transform 0.2s, box-shadow 0.2s;
+
+    &:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
+    }
+
+    &.selected {
+        border: 2px solid #ffeb3b;
+        box-shadow: 0 0 0 2px #ffeb3b, 0 4px 15px rgba(0, 0, 0, 0.3);
+    }
+
+    &-header {
+        font-size: 16px;
+        font-weight: bold;
+        padding: 8px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.5);
+        text-align: center;
+        background-color: rgba(0, 0, 0, 0.1);
+    }
+
+    &-columns {
+        padding: 8px;
+    }
+
+    &-actions {
+        display: flex;
+        justify-content: flex-end;
+        padding: 5px;
+        border-top: 1px solid rgba(255, 255, 255, 0.3);
+        background-color: rgba(0, 0, 0, 0.1);
+
+        .action-btn {
+            background: rgba(255, 255, 255, 0.2);
+            border: none;
+            border-radius: 3px;
+            color: white;
+            width: 24px;
+            height: 24px;
+            margin-left: 5px;
+            cursor: pointer;
+            font-size: 12px;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background-color 0.2s;
+
+            &:hover {
+                background: rgba(255, 255, 255, 0.4);
+            }
+
+            &.danger:hover {
+                background: rgba(255, 0, 0, 0.6);
+            }
+        }
+    }
+}
+
+.test-column {
+    font-size: 12px;
+    padding: 5px;
+    margin: 3px 0;
+    border-radius: 3px;
+    background-color: rgba(255, 255, 255, 0.1);
+
+    &.primary-key {
+        font-weight: bold;
+        background-color: rgba(255, 255, 0, 0.2);
+    }
+
+    &.foreign-key {
+        font-style: italic;
+        background-color: rgba(0, 255, 255, 0.2);
+    }
+}
+
+.key-indicator {
+    margin-left: 5px;
+    font-size: 10px;
+}
+
+/* Floating context menu */
+.floating-menu {
+    position: absolute;
+    z-index: 2000;
+    background-color: white;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+    border-radius: 4px;
+    min-width: 180px;
+    overflow: hidden;
+
+    .menu-item {
+        padding: 8px 12px;
+        cursor: pointer;
+        transition: background-color 0.2s;
+
+        &:hover {
+            background-color: #f5f5f5;
+        }
+
+        &.danger {
+            color: #f44336;
+
+            &:hover {
+                background-color: #ffebee;
+            }
+        }
+    }
+}
+
+/* Angular Material menu customizations */
+.warn-menu-item {
+    color: #f44336;
+}
+
+.warn-text {
+    color: #f44336;
+}
+
+/* Zoom controls */
+.zoom-controls {
+    position: absolute;
+    bottom: 20px;
+    right: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    background-color: white;
+    border-radius: 4px;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+    padding: 4px;
+    z-index: 10;
+
+    button {
+        background-color: white;
+
+        &:hover {
+            background-color: #f5f5f5;
+        }
+    }
+}
