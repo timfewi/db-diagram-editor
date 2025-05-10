@@ -1,0 +1,53 @@
+{
+    "github.copilot.enable": {
+        "*": true,
+        "plaintext": false,
+        "markdown": false,
+        "scminput": false,
+        "csharp": true
+    },
+    "chat.promptFiles": true,
+    "chat.promptFilesLocations": {
+        ".github/prompts": true,
+        ".vscode/prompts": true
+    },
+    "github.copilot.chat.codeGeneration.instructions": [
+        {
+            "file": ".vscode/rules/angular/coding-guidelines.md"
+        },
+        {
+            "file": ".vscode/rules/angular/coding-style.md"
+        },
+        {
+            "file": ".vscode/prompts/db-diagram-editor-prd.md"
+        },
+        {
+            "file": "TWSoftware.Server/wwwroot/css/styles.css"
+        },
+        {
+            "file": ".vscode/rules/css/css-bootstrap.md"
+        }
+    ],
+    "github.copilot.chat.commitMessageGeneration.instructions": [
+        {
+            "file": ".vscode/rules/git-message.md"
+        }
+    ],
+    "github.copilot.chat.reviewSelection.enabled": true,
+    "github.copilot.chat.reviewSelection.instructions": [
+        {
+            "file": ".vscode/rules/csharp/coding-guidelines.md"
+        },
+        {
+            "file": ".vscode/rules/csharp/coding-style.md"
+        },
+        {
+            "file": ".vscode/prompts/PRD-WebDevelopmentAgency.md"
+        },
+    ],
+    "github.copilot.chat.testGeneration.instructions": [
+        {
+            "file": ".vscode/rules/csharp/testing-xunit.md"
+        }
+    ]
+}
