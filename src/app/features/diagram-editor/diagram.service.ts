@@ -47,7 +47,9 @@ export class DiagramService {
         } catch (error) {
             console.error('Error loading diagram from localStorage', error);
         }
-    }    /**
+    }    
+    
+    /**
      * Saves current diagram to localStorage
      */
     private saveToLocalStorage(): void {
@@ -82,7 +84,9 @@ export class DiagramService {
         } catch (error) {
             console.error('Error saving diagram to localStorage', error);
         }
-    }/**
+    }
+    
+    /**
      * Sets the current diagram and updates nodes and links
      * @param diagram The diagram to set
      * @param description Optional description of the change for history
@@ -97,10 +101,10 @@ export class DiagramService {
         const preparedNodes = safeNodes.map(node => ({
             ...node,
             id: node.id,
-            label: node.name || node.label || 'Unnamed',
+            label: node.name ?? node.label ?? 'Unnamed',
             // Add position if not present
-            x: node.x !== undefined ? node.x : Math.random() * 500,
-            y: node.y !== undefined ? node.y : Math.random() * 500,
+            x: node.x ?? Math.random() * 500,
+            y: node.y ?? Math.random() * 500,
             // Add dimension for proper rendering (required for ngx-graph)
             dimension: node.dimension || {
                 width: 200,
@@ -113,10 +117,10 @@ export class DiagramService {
             },
             // NGX-Graph 10 specific properties
             position: {
-                x: node.x || Math.random() * 500,
-                y: node.y || Math.random() * 500
+                x: node.x ?? Math.random() * 500,
+                y: node.y ?? Math.random() * 500
             },
-            transform: `translate(${node.x || Math.random() * 500}, ${node.y || Math.random() * 500})`,
+            // transform: `translate(${node.x ?? Math.random() * 500}, ${node.y ?? Math.random() * 500})`,
             // Ensure columns are accessible
             columns: node.columns || []
         }));
@@ -126,7 +130,7 @@ export class DiagramService {
             id: link.id || `link-${Math.random()}`,
             source: link.source,
             target: link.target,
-            label: link.label || link.type || 'link',
+            label: link.label ?? link.type ?? 'link',
             // NGX-Graph specific properties
             points: link.points || [],
             line: 'linear',  // Can be 'linear' or 'curve'
@@ -151,7 +155,9 @@ export class DiagramService {
         if (trackInHistory && description) {
             this.historyService.addHistoryEntry(safeDiagram, description);
         }
-    }/**
+    }
+    
+    /**
      * Creates a new empty diagram
      */
     createNewDiagram(name: string): void {
@@ -232,9 +238,12 @@ export class DiagramService {
                 })
             );
         }
-    }    /**
-   * Adds a new node to the diagram
-   */    addNode(node: EntityNode): void {
+    }    
+    
+    /**
+    * Adds a new node to the diagram
+    */    
+    addNode(node: EntityNode): void {
         console.log('DiagramService.addNode: Adding node', node);
 
         // Create a node object without circular references
@@ -272,7 +281,9 @@ export class DiagramService {
 
         // Add to history
         this.historyService.addHistoryEntry(updatedDiagram, `Add table "${node.name}"`);
-    }/**
+    }
+    
+    /**
      * Updates an existing node
      */
     updateNode(nodeId: string, updates: Partial<EntityNode>): void {
@@ -304,7 +315,9 @@ export class DiagramService {
                 this.historyService.addHistoryEntry(updatedDiagram, description);
             }
         }
-    }    /**
+    }    
+    
+    /**
      * Removes a node and its connected links
      */
     removeNode(nodeId: string): void {
@@ -337,7 +350,9 @@ export class DiagramService {
             // Add to history
             this.historyService.addHistoryEntry(updatedDiagram, `Delete table "${nodeToRemove.name}"`);
         }
-    }    /**
+    }    
+    
+    /**
      * Adds a new link to the diagram
      */
     addLink(link: RelationLink): void {
@@ -349,7 +364,7 @@ export class DiagramService {
             source: link.source,
             target: link.target,
             type: link.type,
-            label: link.label || link.type?.toString(),
+            label: link.label ?? link.type?.toString(),
             metadata: link.metadata
         };
 

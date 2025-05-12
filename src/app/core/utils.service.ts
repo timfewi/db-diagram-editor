@@ -12,8 +12,9 @@ export class UtilsService {
      * Generates a unique ID for nodes and links
      */
     generateUniqueId(prefix = ''): string {
-        return `${prefix}${Date.now().toString(36)}-${Math.random().toString(36).substr(2, 9)}`;
+        return `${prefix}${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 11)}`;
     }
+
 
     /**
      * Alias for generateUniqueId for backwards compatibility

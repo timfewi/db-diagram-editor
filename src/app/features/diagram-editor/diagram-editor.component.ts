@@ -111,7 +111,9 @@ export class DiagramEditorComponent implements OnInit, AfterViewInit {    // Ser
     propertiesPanelPosition = { x: 20, y: 60 };
     isPropertiesPanelDragging = false;
 
-    constructor() { } ngOnInit(): void {
+    constructor() { } 
+    
+    ngOnInit(): void {
         console.log('DiagramEditorComponent ngOnInit: Initializing component');
 
         // First ensure an initial empty diagram exists
@@ -133,6 +135,14 @@ export class DiagramEditorComponent implements OnInit, AfterViewInit {    // Ser
 
             // Create properly formatted nodes for ngx-graph
             this.nodes = (nodes || []).map(node => {
+                const headerHeight = 40; // Approximate height of .entity-header
+                const columnHeight = 30; // Approximate height of .entity-column content
+                const columnsContainerPadding = 16; // Padding for .entity-columns
+                const numColumns = node.columns?.length || 0;
+
+                const calculatedMinHeight = headerHeight + (numColumns * columnHeight) + columnsContainerPadding;
+                const nodeDisplayHeight = Math.max(this.defaultNodeDimensions.height, calculatedMinHeight);
+
                 const formattedNode = {
                     ...node,
                     id: node.id,
@@ -140,15 +150,15 @@ export class DiagramEditorComponent implements OnInit, AfterViewInit {    // Ser
                     // Add dimensions required by ngx-graph
                     dimension: {
                         width: this.defaultNodeDimensions.width,
-                        height: this.defaultNodeDimensions.height
+                        height: nodeDisplayHeight
                     },
                     // Ensure position is defined
-                    x: node.x || 100,
-                    y: node.y || 100,
+                    x: node.x ?? 100,
+                    y: node.y ?? 100,
                     // Ensure necessary properties for ngx-graph v10
                     position: {
-                        x: node.x || 100,
-                        y: node.y || 100
+                        x: node.x ?? 100,
+                        y: node.y ?? 100
                     }
                 };
                 console.log('Formatted node:', formattedNode);
@@ -173,7 +183,7 @@ export class DiagramEditorComponent implements OnInit, AfterViewInit {    // Ser
                 id: link.id,
                 source: link.source,
                 target: link.target,
-                label: link.label || link.type?.toString() || ''
+                label: link.label ?? link.type?.toString() ?? ''
             }));
 
             if (this.links.length > 0) {
@@ -232,7 +242,7 @@ export class DiagramEditorComponent implements OnInit, AfterViewInit {    // Ser
                 x: position.x,
                 y: position.y
             },
-            transform: `translate(${position.x}, ${position.y})`,
+            // transform: `translate(${position.x}, ${position.y})`,
             columns: [
                 {
                     name: 'id',
@@ -342,8 +352,8 @@ export class DiagramEditorComponent implements OnInit, AfterViewInit {    // Ser
             label: relationType,
             // Add points for path rendering
             points: [
-                { x: sourceNode.x || 0, y: sourceNode.y || 0 },
-                { x: targetNode.x || 0, y: targetNode.y || 0 }
+                { x: sourceNode.x ?? 0, y: sourceNode.y ?? 0 },
+                { x: targetNode.x ?? 0, y: targetNode.y ?? 0 }
             ]
         };
 

@@ -12,7 +12,9 @@ export interface RelationLink {
     target: string;
 
     /** Type of relationship (e.g., "1:N", "N:M") */
-    type?: RelationType;    /** Label to display on the relationship */
+    type?: RelationType;
+        
+    /** Label to display on the relationship */
     label?: string;
 
     /** Reference to original data (for ngx-graph) */

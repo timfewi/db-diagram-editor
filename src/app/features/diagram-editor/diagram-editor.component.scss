@@ -245,9 +245,11 @@
 /* Properties panel */
 .properties-panel {
     position: absolute;
-    top: 60px;
+    top: 80px;
     right: 20px;
     width: 300px;
+    height: 500px;
+    max-height: calc(100vh - 80px);
     background: white;
     border-radius: 4px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
@@ -257,13 +259,19 @@
     /* Show drag cursor */
     user-select: none;
     /* Prevent text selection while dragging */
+    display: flex;
+    flex-direction: column;
+    overflow: auto;
 
     .panel-header {
         display: flex;
         justify-content: space-between;
         align-items: center;
         margin-bottom: 16px;
+        padding: 16px;
+        border-bottom: 1px solid #eeeeee;
         cursor: move;
+        flex-shrink: 0;
 
         h3 {
             margin: 0;
@@ -273,8 +281,28 @@
     }
 
     .panel-content {
+        padding: 16px;
+        overflow-y: auto;
+        flex-grow: 1;
+        min-height: 0;
         cursor: default;
+
         /* Reset cursor for the content area */
+            &::-webkit-scrollbar {
+            width: 6px;
+        }
+        &::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 3px;
+        }
+        &::-webkit-scrollbar-thumb {
+            background: #cccccc;
+            border-radius: 3px;
+        }
+        &::-webkit-scrollbar-thumb:hover {
+            background: #aaaaaa;
+        }
+    
     }
 
     &.dragging {

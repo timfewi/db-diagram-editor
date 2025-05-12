@@ -14,7 +14,7 @@ export class ExportService {
      * @returns SQL DDL script as a string
      */
     exportAsSqlDdl(diagram: Diagram): string {
-        if (!diagram || !diagram.nodes || diagram.nodes.length === 0) {
+        if ((diagram?.nodes?.length ?? 0) === 0) {
             return '-- No tables defined in the diagram';
         }
 
@@ -44,7 +44,7 @@ export class ExportService {
      * @returns GraphQL SDL as a string
      */
     exportAsGraphQLSdl(diagram: Diagram): string {
-        if (!diagram || !diagram.nodes || diagram.nodes.length === 0) {
+        if (!diagram?.nodes?.length) {
             return '# No types defined in the diagram';
         }
 
