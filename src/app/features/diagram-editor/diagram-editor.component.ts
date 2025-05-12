@@ -1,10 +1,10 @@
-import { ChangeDetectionStrategy, Component, OnInit, AfterViewInit, ViewChild, inject, HostListener, ChangeDetectorRef } from '@angular/core';
+// filepath: d:\Projects\db-diagram-editor\src\app\features\diagram-editor\diagram-editor.component.ts
+import { Component, OnInit, AfterViewInit, ViewChild, ChangeDetectorRef, HostListener, inject, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule, ReactiveFormsModule } from '@angular/forms';
-import { NgxGraphModule } from '@swimlane/ngx-graph';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
-import { MatMenuModule } from '@angular/material/menu';
+import { MatMenuModule, MatMenuTrigger } from '@angular/material/menu';
 import { MatCardModule } from '@angular/material/card';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
@@ -12,13 +12,15 @@ import { MatSelectModule } from '@angular/material/select';
 import { MatTooltipModule } from '@angular/material/tooltip';
 import { MatSnackBarModule, MatSnackBar } from '@angular/material/snack-bar';
 import { MatCheckboxModule } from '@angular/material/checkbox';
-import { Subject, combineLatest, asyncScheduler } from 'rxjs';
-import { observeOn, tap } from 'rxjs/operators';
+
+import { Subject } from 'rxjs';
 
 import { DiagramService } from './diagram.service';
 import { UtilsService } from '../../core/utils.service';
 import { ExportService } from '../../core/export.service';
-import { Diagram, EntityNode, RelationLink, RelationType, Column } from '../../models';
+import { EntityNode, Column } from '../../models/entity-node.model';
+import { RelationLink, RelationType } from '../../models/relation-link.model';
+import { Diagram } from '../../models/diagram.model';
 
 @Component({
     selector: 'app-diagram-editor',
@@ -27,7 +29,6 @@ import { Diagram, EntityNode, RelationLink, RelationType, Column } from '../../m
         CommonModule,
         FormsModule,
         ReactiveFormsModule,
-        NgxGraphModule,
         MatButtonModule,
         MatIconModule,
         MatMenuModule,
@@ -43,7 +44,8 @@ import { Diagram, EntityNode, RelationLink, RelationType, Column } from '../../m
     styleUrls: ['./diagram-editor.component.scss'],
     changeDetection: ChangeDetectionStrategy.OnPush
 })
-export class DiagramEditorComponent implements OnInit, AfterViewInit {    // Services
+export class DiagramEditorComponent implements OnInit, AfterViewInit {
+    // Services
     private readonly diagramService = inject(DiagramService);
     private readonly utilsService = inject(UtilsService);
     private readonly exportService = inject(ExportService);
@@ -53,10 +55,11 @@ export class DiagramEditorComponent implements OnInit, AfterViewInit {    // Ser
     // ViewChild references
     @ViewChild('fileInput') fileInput: any;
     @ViewChild('columnContextMenuTrigger') columnContextMenuTrigger: any;
+    @ViewChild('linkContextMenuTrigger') linkContextMenuTrigger: any;
 
     // Graph data
-    nodes: any[] = []; // Use any[] to accommodate ngx-graph's node format
-    links: any[] = []; // Use any[] to accommodate ngx-graph's link format
+    nodes: EntityNode[] = [];
+    links: RelationLink[] = [];
 
     // Selected element tracking
     selectedNode: EntityNode | null = null;
@@ -64,22 +67,6 @@ export class DiagramEditorComponent implements OnInit, AfterViewInit {    // Ser
     selectedColumn: Column | null = null;
     selectedNodeId: string | null = null;
     selectedColumnIndex: number = -1;
-
-    // Diagram settings
-    // Define a proper color scheme for ngx-graph with a name property
-    readonly colorScheme = {
-        domain: ['#5AA454', '#A10A28', '#C7B42C', '#AAAAAA', '#3F51B5', '#FF4081', '#FFC107'], // Example Material-like colors
-        name: 'entity-colors' // Important: name property is required by ngx-graph
-    };
-
-    // Dimensions for nodes (needed for ngx-graph proper rendering)
-    readonly defaultNodeDimensions = { width: 230, height: 150 };
-    // Graph layout settings
-    layoutSettings = {
-        orientation: 'TB', // 'TB', 'LR', 'RL', 'BT'
-        alignItems: true,
-        animate: true
-    };
 
     // Update when the graph should refresh
     update$ = new Subject<void>();
@@ -90,13 +77,15 @@ export class DiagramEditorComponent implements OnInit, AfterViewInit {    // Ser
 
     // Track drag & drop operation
     isDragging = false;
-
-    // Edit mode flags
-    isEditingNode = false;
+    dragStartX = 0;
+    dragStartY = 0;
+    currentNodeX = 0;
+    currentNodeY = 0;
+    currentDragNode: EntityNode | null = null;
 
     // Grid snap feature
     gridSnapEnabled = false;
-    gridSize = 20; // Size of grid cells in pixels
+    gridSize = 20;
 
     // Zoom tracking
     currentZoom = 1;
@@ -111,199 +100,97 @@ export class DiagramEditorComponent implements OnInit, AfterViewInit {    // Ser
     propertiesPanelPosition = { x: 20, y: 60 };
     isPropertiesPanelDragging = false;
 
-    constructor() { } 
-    
-    ngOnInit(): void {
-        console.log('DiagramEditorComponent ngOnInit: Initializing component');
-
-        // First ensure an initial empty diagram exists
-        if (!this.diagramService.getCurrentDiagram()) {
-            console.log('No diagram exists, creating default diagram');
-            this.diagramService.createNewDiagram('New Diagram');
-        }
-
-        // Listen to diagram changes - this will allow us to update title or other diagram properties
-        this.diagramService.diagram$.subscribe(diagram => {
-            console.log('Diagram updated:', diagram);
-            // Force change detection to update the UI
-            this.cdr.detectChanges();
-        });
-
-        // Subscribe to nodes and links separately for better control
+    constructor() { } ngOnInit(): void {
+        // Subscribe to data from the diagram service
         this.diagramService.nodes$.subscribe(nodes => {
-            console.log('Nodes updated:', nodes?.length || 0);
+            console.log('Received updated nodes:', nodes);
+            this.nodes = nodes;
 
-            // Create properly formatted nodes for ngx-graph
-            this.nodes = (nodes || []).map(node => {
-                const headerHeight = 40; // Approximate height of .entity-header
-                const columnHeight = 30; // Approximate height of .entity-column content
-                const columnsContainerPadding = 16; // Padding for .entity-columns
-                const numColumns = node.columns?.length || 0;
-
-                const calculatedMinHeight = headerHeight + (numColumns * columnHeight) + columnsContainerPadding;
-                const nodeDisplayHeight = Math.max(this.defaultNodeDimensions.height, calculatedMinHeight);
-
-                const formattedNode = {
-                    ...node,
-                    id: node.id,
-                    label: node.name || 'Unnamed Node',
-                    // Add dimensions required by ngx-graph
-                    dimension: {
-                        width: this.defaultNodeDimensions.width,
-                        height: nodeDisplayHeight
-                    },
-                    // Ensure position is defined
-                    x: node.x ?? 100,
-                    y: node.y ?? 100,
-                    // Ensure necessary properties for ngx-graph v10
-                    position: {
-                        x: node.x ?? 100,
-                        y: node.y ?? 100
-                    }
-                };
-                console.log('Formatted node:', formattedNode);
-                return formattedNode;
-            });
-
-            if (this.nodes.length > 0) {
-                console.log('Formatted nodes for rendering:', this.nodes);
-            }
-
-            // Trigger update for ngx-graph and change detection
+            // When nodes update, we need to make sure links are properly rendered
+            // This ensures link endpoints stay attached to node edges
             this.update$.next();
-            this.cdr.detectChanges();
+            this.cdr.markForCheck();
         });
 
         this.diagramService.links$.subscribe(links => {
-            console.log('Links updated:', links?.length || 0);
-
-            // Create properly formatted links for ngx-graph
-            this.links = (links || []).map(link => ({
-                ...link,
-                id: link.id,
-                source: link.source,
-                target: link.target,
-                label: link.label ?? link.type?.toString() ?? ''
-            }));
-
-            if (this.links.length > 0) {
-                console.log('Formatted links for rendering:', this.links);
-            }
-
-            // Trigger update for ngx-graph and change detection
-            this.update$.next();
-            this.cdr.detectChanges();
+            console.log('Received updated links:', links);
+            this.links = links;
+            this.cdr.markForCheck();
         });
 
-        // Initial update to trigger rendering
-        setTimeout(() => {
-            this.update$.next();
-            this.cdr.detectChanges();
-        }, 0);
-    }    /**
-     * Creates a new empty table node
-     */
-    createNewNode(): void {
-        console.log('Creating new table node');
-
-        // Check if there's a current diagram
+        // Load initial diagram or create new one
         const currentDiagram = this.diagramService.getCurrentDiagram();
         if (!currentDiagram) {
-            console.log('No current diagram exists. Creating a new diagram first.');
             this.createNewDiagram();
-            // Adding a small delay to ensure the diagram is created before adding the node
-            setTimeout(() => {
-                this.createNewNodeInternal();
-            }, 500);
-            return;
         }
+    }
 
-        this.createNewNodeInternal();
-    }    /**
-     * Internal method to create a new node
-     */    private createNewNodeInternal(): void {
-        const randomColor = this.colorScheme.domain[Math.floor(Math.random() * this.colorScheme.domain.length)];
+    /**
+     * Creates a new entity node
+     */
+    createNewNode(): void {
+        const id = 'node-' + this.utilsService.generateId();
+        const name = 'Table' + (this.nodes.length + 1);
+        const x = Math.random() * 500 + 50;
+        const y = Math.random() * 300 + 50;
 
-        // Get center position or add some randomness for multiple nodes
-        const position = this.utilsService.calculateCenterPosition({
-            x: Math.random() * 100 - 50,
-            y: Math.random() * 100 - 50
-        });
-
-        // Create a node compatible with ngx-graph
-        const newNode: any = {
-            id: this.utilsService.generateUniqueId('node-'),
-            name: 'New Table',
-            label: 'New Table',
-            x: position.x,
-            y: position.y,
-            // NGX-Graph v10 specific properties
-            position: {
-                x: position.x,
-                y: position.y
-            },
-            // transform: `translate(${position.x}, ${position.y})`,
-            columns: [
-                {
-                    name: 'id',
-                    dataType: 'int',
-                    isPrimaryKey: true,
-                    isNullable: false
-                }
-            ],
-            metadata: {
-                expanded: true,
-                style: {
-                    backgroundColor: randomColor
-                }
-            },
+        const node: EntityNode = {
+            id,
+            name,
+            x,
+            y,
+            columns: [],
             dimension: {
-                width: this.defaultNodeDimensions.width,
-                height: this.defaultNodeDimensions.height
+                width: 200,
+                height: 150
+            },
+            metadata: {
+                selected: false,
+                expanded: true
             }
         };
 
-        console.log('Adding new node with properties:', newNode);
-        this.diagramService.addNode(newNode);
-        this.update$.next(); // Force graph update
-        this.cdr.detectChanges(); // Force UI update
-        this.showNotification('Table created');
+        this.diagramService.addNode(node);
+        this.selectedNode = node;
+
+        // Add a default primary key column
+        this.addColumn(id);
     }
 
     /**
      * Selects a node for editing or linking
      */
     onNodeSelect(node: EntityNode): void {
-        // If creating a link, complete the link creation
+        console.log('Node selected:', node.id);
+
+        // If we're in link creation mode, complete the relationship
         if (this.isCreatingLink && this.sourceNodeForLink) {
-            this.createLink(this.sourceNodeForLink, node.id);
-            this.isCreatingLink = false;
-            this.sourceNodeForLink = null;
+            if (this.sourceNodeForLink !== node.id) {
+                this.completeRelationship(node.id);
+            }
             return;
         }
 
-        // Otherwise, select the node
         this.selectedNode = node;
         this.selectedLink = null;
+        this.cdr.markForCheck();
     }
 
     /**
      * Starts the relationship creation mode
      * @param sourceNodeId ID of the source node
      */
-    startLinkCreation(sourceNodeId: string): void {
+    startLinkCreation(sourceNodeId?: string): void {
         this.isCreatingLink = true;
-        this.sourceNodeForLink = sourceNodeId;
+        this.sourceNodeForLink = sourceNodeId || (this.selectedNode ? this.selectedNode.id : null);
 
-        // Show helper message to user
-        this.snackBar.open('Select a target table to create relationship', 'Cancel', {
-            duration: 0, // Don't auto-dismiss
-            panelClass: 'info-snackbar'
-        }).onAction().subscribe(() => {
-            // Cancel the link creation
+        if (!this.sourceNodeForLink) {
+            this.snackBar.open('Please select a source table first', 'OK', { duration: 3000 });
             this.isCreatingLink = false;
-            this.sourceNodeForLink = null;
-        });
+            return;
+        }
+
+        this.snackBar.open('Select a target table to create a relationship', 'OK', { duration: 3000 });
     }
 
     /**
@@ -311,72 +198,33 @@ export class DiagramEditorComponent implements OnInit, AfterViewInit {    // Ser
      * @param targetNodeId ID of the target node
      */
     completeRelationship(targetNodeId: string): void {
-        if (!this.isCreatingLink || !this.sourceNodeForLink) {
-            return;
-        }
+        if (!this.sourceNodeForLink) return;
 
-        // Find source and target nodes
-        const sourceNode = this.nodes.find(n => n.id === this.sourceNodeForLink);
-        const targetNode = this.nodes.find(n => n.id === targetNodeId);
+        this.createLink(this.sourceNodeForLink, targetNodeId);
 
-        if (!sourceNode || !targetNode) {
-            this.snackBar.open('Invalid source or target node', 'OK', { duration: 3000 });
-            return;
-        }
-
-        // If linking to the same node, ask for confirmation
-        if (sourceNode.id === targetNode.id) {
-            const confirmSelfRelation = confirm('Are you sure you want to create a self-relationship?');
-            if (!confirmSelfRelation) {
-                return;
-            }
-        }
-
-        // Open a dialog to choose relationship type
-        const relationTypes = Object.values(RelationType);
-        const typeOptions = relationTypes.map(type => `${type}`).join(', ');
-        const relationType = prompt(`Choose relationship type (${typeOptions}):`, RelationType.OneToMany) as RelationType;
-
-        if (!relationType) {
-            // Cancelled by user
-            return;
-        }
-
-        // Create a new relationship
-        const relationId = this.utilsService.generateId();
-        const newRelation: RelationLink = {
-            id: relationId,
-            source: sourceNode.id,
-            target: targetNode.id,
-            type: relationType,
-            label: relationType,
-            // Add points for path rendering
-            points: [
-                { x: sourceNode.x ?? 0, y: sourceNode.y ?? 0 },
-                { x: targetNode.x ?? 0, y: targetNode.y ?? 0 }
-            ]
-        };
-
-        // Add the new relationship to the diagram
-        this.diagramService.addLink(newRelation);
-
-        // Exit link creation mode
+        // Reset link creation state
         this.isCreatingLink = false;
         this.sourceNodeForLink = null;
-
-        // Close the snackbar
-        this.snackBar.dismiss();
-
-        // Show success message
-        this.snackBar.open(`Created ${relationType} relationship`, 'OK', { duration: 3000 });
+        this.cdr.markForCheck();
     }
 
     /**
      * Selects a link for editing
      */
-    onLinkSelect(link: RelationLink): void {
-        this.selectedLink = link;
-        this.selectedNode = null;
+    onLinkSelect(link: RelationLink, { forceSelect }: { forceSelect?: boolean } = {}): void {
+        console.log('Link selected:', link.id);
+
+        if (forceSelect || !this.selectedLink || this.selectedLink.id !== link.id) {
+            this.selectedLink = link;
+            this.selectedNode = null;
+            this.snackBar.open(`Editing ${link.type} relationship`, 'OK', {
+                duration: 2000,
+                horizontalPosition: 'center',
+                verticalPosition: 'bottom'
+            });
+        }
+
+        this.cdr.markForCheck();
     }
 
     /**
@@ -384,9 +232,13 @@ export class DiagramEditorComponent implements OnInit, AfterViewInit {    // Ser
      */
     updateNode(nodeId: string, updates: Partial<EntityNode>): void {
         this.diagramService.updateNode(nodeId, updates);
-        this.update$.next();
-        this.cdr.detectChanges(); // Force UI update
-        this.showNotification('Table updated');
+
+        // If updates affect node dimensions, refresh connected links
+        if (updates.columns || updates.name ||
+            updates.dimension?.width !== undefined ||
+            updates.dimension?.height !== undefined) {
+            this.refreshLinksForNode(nodeId);
+        }
     }
 
     /**
@@ -394,31 +246,32 @@ export class DiagramEditorComponent implements OnInit, AfterViewInit {    // Ser
      */
     updateLink(linkId: string, updates: Partial<RelationLink>): void {
         this.diagramService.updateLink(linkId, updates);
-        this.update$.next();
-        this.cdr.detectChanges(); // Force UI update
-        this.showNotification('Relationship updated');
     }
 
     /**
      * Removes a node from the diagram
      */
     removeNode(nodeId: string): void {
-        this.diagramService.removeNode(nodeId);
-        this.selectedNode = null;
-        this.update$.next();
-        this.cdr.detectChanges(); // Force UI update
-        this.showNotification('Table deleted');
+        if (confirm('Are you sure you want to delete this table and all its relationships?')) {
+            this.diagramService.removeNode(nodeId);
+
+            if (this.selectedNode && this.selectedNode.id === nodeId) {
+                this.selectedNode = null;
+            }
+        }
     }
 
     /**
      * Removes a link from the diagram
      */
     removeLink(linkId: string): void {
-        this.diagramService.removeLink(linkId);
-        this.selectedLink = null;
-        this.update$.next();
-        this.cdr.detectChanges(); // Force UI update
-        this.showNotification('Relationship deleted');
+        if (confirm('Are you sure you want to delete this relationship?')) {
+            this.diagramService.removeLink(linkId);
+
+            if (this.selectedLink && this.selectedLink.id === linkId) {
+                this.selectedLink = null;
+            }
+        }
     }
 
     /**
@@ -426,17 +279,25 @@ export class DiagramEditorComponent implements OnInit, AfterViewInit {    // Ser
      */
     addColumn(nodeId: string): void {
         const node = this.nodes.find(n => n.id === nodeId);
-        if (node) {
-            const newColumn: Column = {
-                name: 'new_column',
-                dataType: 'varchar',
-                isNullable: true
-            };
+        if (!node) return;
 
-            const updatedColumns = [...node.columns, newColumn];
-            this.updateNode(nodeId, { columns: updatedColumns });
-            // updateNode already handles notification, update$, and detectChanges
-        }
+        const columnName = prompt('Column name:', 'column' + (node.columns.length + 1));
+        if (!columnName) return;
+
+        const columnType = prompt('Data type:', 'VARCHAR(255)');
+        if (!columnType) return;
+
+        const newColumn: Column = {
+            name: columnName,
+            dataType: columnType,
+            isPrimaryKey: node.columns.length === 0, // First column is primary key by default
+            isForeignKey: false,
+            isNullable: false
+        }; const updatedColumns = [...(node.columns || []), newColumn];
+        this.diagramService.updateNode(nodeId, { columns: updatedColumns });
+
+        // Refresh any links connected to this node to update their connection points
+        this.refreshLinksForNode(nodeId);
     }
 
     /**
@@ -444,11 +305,14 @@ export class DiagramEditorComponent implements OnInit, AfterViewInit {    // Ser
      */
     updateColumn(nodeId: string, columnIndex: number, updates: Partial<Column>): void {
         const node = this.nodes.find(n => n.id === nodeId);
-        if (node?.columns?.[columnIndex]) {
-            const updatedColumns = [...node.columns];
-            updatedColumns[columnIndex] = { ...updatedColumns[columnIndex], ...updates };
-            this.updateNode(nodeId, { columns: updatedColumns });
-            // updateNode already handles notification, update$, and detectChanges
+        if (!node || !node.columns || columnIndex >= node.columns.length) return; const updatedColumns = [...node.columns];
+        updatedColumns[columnIndex] = { ...updatedColumns[columnIndex], ...updates };
+
+        this.diagramService.updateNode(nodeId, { columns: updatedColumns });
+
+        // Refresh any links connected to this node if update might affect node dimensions
+        if (updates.name || updates.dataType) {
+            this.refreshLinksForNode(nodeId);
         }
     }
 
@@ -457,14 +321,18 @@ export class DiagramEditorComponent implements OnInit, AfterViewInit {    // Ser
      */
     removeColumn(nodeId: string, columnIndex: number): void {
         const node = this.nodes.find(n => n.id === nodeId);
-        if (node && node.columns.length > 1) { // Keep at least one column
-            const updatedColumns = [...node.columns];
-            updatedColumns.splice(columnIndex, 1);
-            this.updateNode(nodeId, { columns: updatedColumns });
-            // updateNode already handles notification, update$, and detectChanges
-        } else {
-            this.showNotification('Cannot remove the last column', true);
-        }
+        if (!node || !node.columns || columnIndex >= node.columns.length) return;
+
+        const isPrimaryKey = node.columns[columnIndex].isPrimaryKey;
+        if (isPrimaryKey && !confirm('This is a primary key column. Are you sure you want to delete it?')) {
+            return;
+        } const updatedColumns = [...node.columns];
+        updatedColumns.splice(columnIndex, 1);
+
+        this.diagramService.updateNode(nodeId, { columns: updatedColumns });
+
+        // Refresh any links connected to this node to update their connection points
+        this.refreshLinksForNode(nodeId);
     }
 
     /**
@@ -472,52 +340,70 @@ export class DiagramEditorComponent implements OnInit, AfterViewInit {    // Ser
      */
     saveDiagram(): void {
         this.diagramService.saveDiagram().subscribe(
-            savedDiagram => {
-                this.showNotification('Diagram saved successfully');
+            () => {
+                this.snackBar.open('Diagram saved successfully', 'Close', { duration: 3000, panelClass: 'success-notification' });
+            },
+            error => {
+                console.error('Error saving diagram:', error);
+                this.snackBar.open('Error saving diagram', 'Close', { duration: 3000, panelClass: 'error-notification' });
             }
         );
     }    /**
      * Exports the diagram as JSON
      */
     exportDiagram(): void {
-        const jsonContent = this.diagramService.exportDiagramAsJson();
-        const diagram = this.diagramService.getCurrentDiagram();
-        const filename = `${diagram?.name ?? 'diagram'}.json`;
-
-        this.utilsService.downloadAsFile(jsonContent, filename);
-        this.showNotification('Diagram exported successfully');
-    }    /**
-     * Exports the diagram as SQL DDL
-     */
-    exportAsSqlDdl(): void {
-        const diagram = this.diagramService.getCurrentDiagram();
-        if (!diagram) {
-            this.showNotification('No diagram to export', true);
+        const json = this.diagramService.exportDiagramAsJson();
+        if (json === '{}') {
+            this.snackBar.open('No diagram to export', 'Close', { duration: 3000 });
             return;
         }
 
-        const sqlContent = this.exportService.exportAsSqlDdl(diagram);
-        const filename = `${diagram.name ?? 'diagram'}.sql`;
+        this.exportService.downloadAsJson(json, 'diagram.json');
+        this.snackBar.open('Diagram exported as JSON', 'Close', { duration: 3000 });
+    }
 
-        this.utilsService.downloadAsFile(sqlContent, filename, 'text/plain');
-        this.showNotification('SQL DDL exported successfully');
+    /**
+     * Exports the diagram as SQL DDL
+     */
+    exportAsSqlDdl(): void {
+        const currentDiagram = this.diagramService.getCurrentDiagram();
+        if (!currentDiagram) {
+            this.snackBar.open('No diagram to export', 'Close', { duration: 3000 });
+            return;
+        }
+
+        // Create a diagram object with the current nodes and links
+        const diagram: Diagram = {
+            ...currentDiagram,
+            nodes: this.nodes,
+            links: this.links
+        };
+
+        const sql = this.exportService.exportAsSqlDdl(diagram);
+        this.exportService.downloadAsText(sql, 'diagram.sql');
+        this.snackBar.open('Diagram exported as SQL DDL', 'Close', { duration: 3000 });
     }
 
     /**
      * Exports the diagram as GraphQL SDL
      */
     exportAsGraphQLSdl(): void {
-        const diagram = this.diagramService.getCurrentDiagram();
-        if (!diagram) {
-            this.showNotification('No diagram to export', true);
+        const currentDiagram = this.diagramService.getCurrentDiagram();
+        if (!currentDiagram) {
+            this.snackBar.open('No diagram to export', 'Close', { duration: 3000 });
             return;
         }
 
-        const graphqlContent = this.exportService.exportAsGraphQLSdl(diagram);
-        const filename = `${diagram.name ?? 'diagram'}.graphql`;
+        // Create a diagram object with the current nodes and links
+        const diagram: Diagram = {
+            ...currentDiagram,
+            nodes: this.nodes,
+            links: this.links
+        };
 
-        this.utilsService.downloadAsFile(graphqlContent, filename, 'text/plain');
-        this.showNotification('GraphQL SDL exported successfully');
+        const graphql = this.exportService.exportAsGraphQLSdl(diagram);
+        this.exportService.downloadAsText(graphql, 'schema.graphql');
+        this.snackBar.open('Diagram exported as GraphQL SDL', 'Close', { duration: 3000 });
     }
 
     /**
@@ -532,56 +418,53 @@ export class DiagramEditorComponent implements OnInit, AfterViewInit {    // Ser
      */
     importDiagram(event: Event): void {
         const input = event.target as HTMLInputElement;
-        if (!input.files?.length) return;
+        if (!input.files || input.files.length === 0) return;
 
         const file = input.files[0];
         const reader = new FileReader();
 
-        reader.onload = (e: any) => {
-            const content = e.target.result;
-            const success = this.diagramService.importDiagramFromJson(content);
-
-            if (success) {
-                this.showNotification('Diagram imported successfully');
-            } else {
-                this.showNotification('Failed to import diagram. Invalid format.', true);
+        reader.onload = () => {
+            const json = reader.result as string;
+            try {
+                if (this.diagramService.importDiagramFromJson(json)) {
+                    this.snackBar.open('Diagram imported successfully', 'Close', { duration: 3000, panelClass: 'success-notification' });
+                } else {
+                    this.snackBar.open('Error importing diagram: Invalid format', 'Close', { duration: 3000, panelClass: 'error-notification' });
+                }
+            } catch (error) {
+                console.error('Import error:', error);
+                this.snackBar.open('Error importing diagram', 'Close', { duration: 3000, panelClass: 'error-notification' });
             }
-
-            // Reset the file input
-            input.value = '';
         };
 
         reader.readAsText(file);
+        input.value = ''; // Reset input
     }    /**
-     * Handles node position changes from drag events
+     * Handles node position changes from dragging
      */
     onNodePositionChange(node: EntityNode): void {
-        if (node.x !== undefined && node.y !== undefined) {
-            let x = node.x;
-            let y = node.y;
-
-            // Apply grid snapping if enabled
-            if (this.gridSnapEnabled) {
-                x = this.snapToGrid(x);
-                y = this.snapToGrid(y);
-            }
-
-            this.diagramService.updateNode(node.id, {
-                x,
-                y
-            });
+        if (this.gridSnapEnabled) {
+            // Snap to grid
+            const snappedX = Math.round(node.x! / this.gridSize) * this.gridSize;
+            const snappedY = Math.round(node.y! / this.gridSize) * this.gridSize;
+            this.updateNode(node.id, { x: snappedX, y: snappedY });
+        } else {
+            this.updateNode(node.id, { x: node.x, y: node.y });
         }
-    }    /**
+
+        // Explicitly refresh links for this node to ensure they remain attached to edges
+        this.refreshLinksForNode(node.id);
+    }
+
+    /**
      * Creates a new empty diagram
      */
     createNewDiagram(): void {
-        const name = this.prompt('Enter diagram name:', 'New Diagram');
+        const name = prompt('Diagram name:', 'New Diagram');
         if (name) {
-            console.log('Creating new diagram:', name);
             this.diagramService.createNewDiagram(name);
-            this.update$.next(); // Force graph update
-            this.cdr.detectChanges(); // Force UI update
-            this.showNotification('New diagram created');
+            this.selectedNode = null;
+            this.selectedLink = null;
         }
     }
 
@@ -590,9 +473,9 @@ export class DiagramEditorComponent implements OnInit, AfterViewInit {    // Ser
      */
     undo(): void {
         if (this.diagramService.undo()) {
-            this.update$.next();
-            this.cdr.detectChanges(); // Force UI update
-            this.showNotification('Undo successful');
+            this.snackBar.open('Undo successful', 'Close', { duration: 2000 });
+        } else {
+            this.snackBar.open('Nothing to undo', 'Close', { duration: 2000 });
         }
     }
 
@@ -601,9 +484,9 @@ export class DiagramEditorComponent implements OnInit, AfterViewInit {    // Ser
      */
     redo(): void {
         if (this.diagramService.redo()) {
-            this.update$.next();
-            this.cdr.detectChanges(); // Force UI update
-            this.showNotification('Redo successful');
+            this.snackBar.open('Redo successful', 'Close', { duration: 2000 });
+        } else {
+            this.snackBar.open('Nothing to redo', 'Close', { duration: 2000 });
         }
     }
 
@@ -619,45 +502,77 @@ export class DiagramEditorComponent implements OnInit, AfterViewInit {    // Ser
      */
     canRedo(): boolean {
         return this.diagramService.canRedo();
-    }    /**
-     * Handles keyboard shortcuts
-     * @param event Keyboard event
+    }
+
+    /**
+     * Global keyboard shortcuts
      */
     @HostListener('window:keydown', ['$event'])
     handleKeyboardShortcuts(event: KeyboardEvent): void {
-        // Check if Ctrl key is pressed (or Command key on Mac)
-        const ctrlPressed = event.ctrlKey || event.metaKey;
+        // Ctrl+Z = Undo
+        if (event.ctrlKey && event.key === 'z') {
+            this.undo();
+            event.preventDefault();
+        }
 
-        if (ctrlPressed) {
-            switch (event.key.toLowerCase()) {
-                case 'z':
-                    // Ctrl+Z for Undo (Windows/Linux)
-                    // Cmd+Z for Undo (Mac)
-                    // Cmd+Shift+Z for Redo (Mac)
-                    if (event.shiftKey && event.metaKey) {
-                        event.preventDefault();
-                        this.redo();
-                    } else {
-                        event.preventDefault();
-                        this.undo();
-                    }
-                    break;
-                case 'y':
-                    // Ctrl+Y for Redo (Windows/Linux)
-                    event.preventDefault();
-                    this.redo();
-                    break;
-                // Add more keyboard shortcuts here as needed
+        // Ctrl+Y = Redo
+        if (event.ctrlKey && event.key === 'y') {
+            this.redo();
+            event.preventDefault();
+        }
+
+        // Delete = Remove selected element
+        if (event.key === 'Delete') {
+            if (this.selectedNode) {
+                this.removeNode(this.selectedNode.id);
+                event.preventDefault();
+            } else if (this.selectedLink) {
+                this.removeLink(this.selectedLink.id);
+                event.preventDefault();
+            }
+        }
+
+        // Escape = Cancel link creation
+        if (event.key === 'Escape' && this.isCreatingLink) {
+            this.isCreatingLink = false;
+            this.sourceNodeForLink = null;
+            event.preventDefault();
+        }
+
+        // WASD or Arrow keys = Pan the canvas
+        if ((!event.ctrlKey && !event.altKey && !event.metaKey) &&
+            ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'w', 'a', 's', 'd'].includes(event.key)) {
+            const container = document.querySelector('.graph-container') as HTMLElement;
+            if (container) {
+                const panAmount = 50; // Pixels to pan per key press
+
+                switch (event.key) {
+                    case 'ArrowUp':
+                    case 'w':
+                        container.scrollTop -= panAmount;
+                        break;
+                    case 'ArrowDown':
+                    case 's':
+                        container.scrollTop += panAmount;
+                        break;
+                    case 'ArrowLeft':
+                    case 'a':
+                        container.scrollLeft -= panAmount;
+                        break;
+                    case 'ArrowRight':
+                    case 'd':
+                        container.scrollLeft += panAmount;
+                        break;
+                }
+                event.preventDefault();
             }
         }
     }
 
     /**
      * Snaps a coordinate to the nearest grid point
-     * @param coord The coordinate to snap
-     * @returns The snapped coordinate
      */
-    private snapToGrid(coord: number): number {
+    snapToGrid(coord: number): number {
         return Math.round(coord / this.gridSize) * this.gridSize;
     }
 
@@ -666,11 +581,17 @@ export class DiagramEditorComponent implements OnInit, AfterViewInit {    // Ser
      */
     toggleGridSnap(): void {
         this.gridSnapEnabled = !this.gridSnapEnabled;
-        this.showNotification(
-            this.gridSnapEnabled
-                ? 'Grid snap enabled'
-                : 'Grid snap disabled'
-        );
+
+        if (this.gridSnapEnabled) {
+            // Snap all nodes to grid
+            this.nodes.forEach(node => {
+                if (node.x !== undefined && node.y !== undefined) {
+                    const snappedX = this.snapToGrid(node.x);
+                    const snappedY = this.snapToGrid(node.y);
+                    this.updateNode(node.id, { x: snappedX, y: snappedY });
+                }
+            });
+        }
     }
 
     /**
@@ -678,7 +599,7 @@ export class DiagramEditorComponent implements OnInit, AfterViewInit {    // Ser
      */
     zoomIn(): void {
         if (this.currentZoom < this.maxZoom) {
-            this.currentZoom = Math.min(this.currentZoom + this.zoomStep, this.maxZoom);
+            this.currentZoom += this.zoomStep;
             this.applyZoom();
         }
     }
@@ -688,7 +609,7 @@ export class DiagramEditorComponent implements OnInit, AfterViewInit {    // Ser
      */
     zoomOut(): void {
         if (this.currentZoom > this.minZoom) {
-            this.currentZoom = Math.max(this.currentZoom - this.zoomStep, this.minZoom);
+            this.currentZoom -= this.zoomStep;
             this.applyZoom();
         }
     }
@@ -699,175 +620,177 @@ export class DiagramEditorComponent implements OnInit, AfterViewInit {    // Ser
     resetZoom(): void {
         this.currentZoom = 1;
         this.applyZoom();
-    }
-
-    /**
-     * Applies the current zoom level to the graph container
+    }    /**
+     * Applies the current zoom level
      */
     private applyZoom(): void {
+        // Now zoom level is applied to the entity-graph element through Angular binding
+
+        // Center the graph in the viewport after zooming
         const container = document.querySelector('.graph-container') as HTMLElement;
         if (container) {
-            container.style.transform = `scale(${this.currentZoom})`;
-            container.style.transformOrigin = 'center center';
+            // Adjust scroll position to maintain the center point
+            const centerX = (container.scrollLeft + container.clientWidth / 2) / this.currentZoom;
+            const centerY = (container.scrollTop + container.clientHeight / 2) / this.currentZoom;
 
-            // Update the UI to show current zoom level
-            this.showNotification(`Zoom: ${Math.round(this.currentZoom * 100)}%`);
-
-            // Force graph update
-            this.update$.next();
+            // Apply new zoom (happens via template binding)
             this.cdr.detectChanges();
+
+            // Re-center at the same logical position
+            container.scrollLeft = centerX * this.currentZoom - container.clientWidth / 2;
+            container.scrollTop = centerY * this.currentZoom - container.clientHeight / 2;
         }
+
+        this.cdr.markForCheck();
     }
 
     /**
-     * Displays a notification/toast message
+     * Shows a prompt dialog for input
      */
-    private showNotification(message: string, isError = false): void {
-        this.snackBar.open(message, 'Close', {
-            duration: 3000,
-            panelClass: isError ? ['error-notification'] : ['success-notification']
-        });
-    }    /**
-     * Displays a prompt dialog and returns the user input
-     * @param message The message to display
-     * @param defaultValue Default value to show in the prompt
-     * @returns The user input or the default value if canceled
-     */
-    prompt(message: string, defaultValue: string = ''): string {
-        return window.prompt(message, defaultValue) ?? defaultValue;
+    prompt(message: string, defaultValue: string = ''): string | null {
+        return window.prompt(message, defaultValue);
     }
 
     /**
      * Starts dragging a node
-     * @param event Mouse event
-     * @param node The node to drag
      */
     startDragging(event: MouseEvent, node: EntityNode): void {
-        if (this.isCreatingLink) {
-            // If we're creating a link, don't start dragging
-            return;
-        }
+        // Skip if we're in link creation mode
+        if (this.isCreatingLink) return;
 
-        // Mark that we're dragging and store initial positions
-        this.isDragging = true;
-        const initialX = event.clientX;
-        const initialY = event.clientY;
-        const nodeInitialX = node.x || 0;
-        const nodeInitialY = node.y || 0;
-
-        // Select the node first
-        this.onNodeSelect(node);
-
-        // Create the mouse move handler
-        const mouseMoveHandler = (moveEvent: MouseEvent) => {
-            if (this.isDragging) {
-                const dx = moveEvent.clientX - initialX;
-                const dy = moveEvent.clientY - initialY;
-
-                // Calculate new position
-                let newX = nodeInitialX + dx;
-                let newY = nodeInitialY + dy;
-
-                // Apply grid snapping if enabled
-                if (this.gridSnapEnabled) {
-                    newX = this.snapToGrid(newX);
-                    newY = this.snapToGrid(newY);
-                }
-
-                // Update the node position in UI only during drag
-                const nodeElement = document.querySelector(`[data-node-id="${node.id}"]`) as HTMLElement;
-                if (nodeElement) {
-                    nodeElement.style.left = `${newX}px`;
-                    nodeElement.style.top = `${newY}px`;
-                }
-            }
-        };
-
-        // Create the mouse up handler
-        const mouseUpHandler = () => {
-            if (this.isDragging) {
-                this.isDragging = false;
-
-                // Remove the event listeners
-                document.removeEventListener('mousemove', mouseMoveHandler);
-                document.removeEventListener('mouseup', mouseUpHandler);
-
-                // Calculate final position
-                const nodeElement = document.querySelector(`[data-node-id="${node.id}"]`) as HTMLElement;
-                if (nodeElement) {
-                    // Get the actual position after dragging
-                    const rect = nodeElement.getBoundingClientRect();
-                    const containerRect = document.querySelector('.graph-container')?.getBoundingClientRect();
-
-                    if (containerRect) {
-                        const finalX = rect.left - containerRect.left + window.scrollX;
-                        const finalY = rect.top - containerRect.top + window.scrollY;
-
-                        // Save the new position
-                        this.updateNode(node.id, {
-                            x: finalX,
-                            y: finalY
-                        });
-                    }
-                }
-            }
-        };
-
-        // Add the event listeners
-        document.addEventListener('mousemove', mouseMoveHandler);
-        document.addEventListener('mouseup', mouseUpHandler);
-
-        // Prevent default behavior
+        // Prevent event propagation and default behavior
+        event.stopPropagation();
         event.preventDefault();
+
+        // Store initial positions
+        this.isDragging = true;
+        this.dragStartX = event.clientX;
+        this.dragStartY = event.clientY;
+        this.currentNodeX = node.x || 0;
+        this.currentNodeY = node.y || 0;
+        this.currentDragNode = node;
+
+        // Add mouse move and mouse up event listeners to the document
+        document.addEventListener('mousemove', this.onMouseMove);
+        document.addEventListener('mouseup', this.onMouseUp);
     }
 
     /**
+     * Handle mouse move during drag
+     */
+    private readonly onMouseMove = (event: MouseEvent): void => {
+        if (!this.isDragging || !this.currentDragNode) return;
+
+        // Calculate the new position
+        const dx = event.clientX - this.dragStartX;
+        const dy = event.clientY - this.dragStartY;
+
+        let newX = this.currentNodeX + dx;
+        let newY = this.currentNodeY + dy;
+
+        // Snap to grid if enabled
+        if (this.gridSnapEnabled) {
+            newX = this.snapToGrid(newX);
+            newY = this.snapToGrid(newY);
+        }
+
+        // Update the node position in both the component state and local data
+        this.currentDragNode.x = newX;
+        this.currentDragNode.y = newY;
+
+        // Update the node position (this triggers a UI update)
+        this.updateNode(this.currentDragNode.id, { x: newX, y: newY });
+
+        // Force change detection to ensure UI reflects the changes immediately
+        this.cdr.detectChanges();
+    };    /**
+     * Handle mouse up after dragging
+     */    private readonly onMouseUp = (): void => {
+        if (this.isDragging && this.currentDragNode) {
+            // Make sure to finalize with the most current position
+            const finalX = this.currentDragNode.x || 0;
+            const finalY = this.currentDragNode.y || 0;
+
+            console.log('Finalizing drag:', this.currentDragNode.id, 'to position:', finalX, finalY);
+
+            // Apply any grid snapping if enabled
+            let snappedX = finalX;
+            let snappedY = finalY;
+
+            if (this.gridSnapEnabled) {
+                snappedX = this.snapToGrid(finalX);
+                snappedY = this.snapToGrid(finalY);
+            }            // Call updateNode one final time with the final position
+            this.diagramService.updateNode(this.currentDragNode.id, {
+                x: snappedX,
+                y: snappedY
+            });
+
+            // Refresh links for this node to ensure they connect properly
+            this.refreshLinksForNode(this.currentDragNode.id);
+        }
+
+        // Reset the drag state
+        this.isDragging = false;
+        this.currentDragNode = null;
+
+        // Remove the event listeners
+        document.removeEventListener('mousemove', this.onMouseMove);
+        document.removeEventListener('mouseup', this.onMouseUp);
+    };
+
+    /**
      * Opens the context menu for a column
-     * @param event Mouse event
-     * @param nodeId ID of the node containing the column
-     * @param columnIndex Index of the column
-     * @param column Column data
      */
     openColumnMenu(event: MouseEvent, nodeId: string, columnIndex: number, column: Column): void {
         event.preventDefault();
+        event.stopPropagation();
 
-        // Store the selected column information
-        this.selectedColumn = column;
         this.selectedNodeId = nodeId;
         this.selectedColumnIndex = columnIndex;
+        this.selectedColumn = column;
 
-        // Open the context menu at the cursor position
+        // Position and open the context menu
+        this.columnContextMenuTrigger.menuData = { column };
         this.columnContextMenuTrigger.openMenu();
-        this.columnContextMenuTrigger.menuData = {
-            nodeId,
-            columnIndex,
-            column
-        };
 
-        // Position the context menu
-        const matMenuPanel = document.querySelector('.mat-mdc-menu-panel');
-        if (matMenuPanel) {
-            // Position adjustment happens after menu opens
-            setTimeout(() => {
-                const menu = document.querySelector('.mat-mdc-menu-panel') as HTMLElement;
-                if (menu) {
-                    menu.style.position = 'absolute';
-                    menu.style.left = `${event.pageX}px`;
-                    menu.style.top = `${event.pageY}px`;
-                }
-            }, 0);
-        }
+        // Set the position of the menu trigger at the mouse position
+        const trigger = this.columnContextMenuTrigger._element.nativeElement;
+        trigger.style.position = 'absolute';
+        trigger.style.left = `${event.clientX}px`;
+        trigger.style.top = `${event.clientY}px`;
+    }
+
+    /**
+     * Opens the context menu for a link
+     */
+    openLinkMenu(event: MouseEvent, link: RelationLink): void {
+        event.preventDefault();
+        event.stopPropagation();
+
+        // Select the link first
+        this.onLinkSelect(link);
+
+        // Position and open the context menu
+        this.linkContextMenuTrigger.menuData = { link };
+        this.linkContextMenuTrigger.openMenu();
+
+        // Set the position of the menu trigger at the mouse position
+        const trigger = this.linkContextMenuTrigger._element.nativeElement;
+        trigger.style.position = 'absolute';
+        trigger.style.left = `${event.clientX}px`;
+        trigger.style.top = `${event.clientY}px`;
     }
 
     /**
      * Renames the selected column
      */
     renameColumn(): void {
-        if (this.selectedNodeId !== null && this.selectedColumnIndex >= 0 && this.selectedColumn) {
-            const newName = prompt('Column name:', this.selectedColumn.name);
-            if (newName !== null) {
-                this.updateColumn(this.selectedNodeId, this.selectedColumnIndex, { name: newName });
-            }
+        if (!this.selectedNodeId || this.selectedColumnIndex < 0 || !this.selectedColumn) return;
+
+        const newName = prompt('Column name:', this.selectedColumn.name);
+        if (newName) {
+            this.updateColumn(this.selectedNodeId, this.selectedColumnIndex, { name: newName });
         }
     }
 
@@ -875,11 +798,11 @@ export class DiagramEditorComponent implements OnInit, AfterViewInit {    // Ser
      * Changes the data type of the selected column
      */
     changeColumnType(): void {
-        if (this.selectedNodeId !== null && this.selectedColumnIndex >= 0 && this.selectedColumn) {
-            const newType = prompt('Data type:', this.selectedColumn.dataType);
-            if (newType !== null) {
-                this.updateColumn(this.selectedNodeId, this.selectedColumnIndex, { dataType: newType });
-            }
+        if (!this.selectedNodeId || this.selectedColumnIndex < 0 || !this.selectedColumn) return;
+
+        const newType = prompt('Data type:', this.selectedColumn.dataType);
+        if (newType) {
+            this.updateColumn(this.selectedNodeId, this.selectedColumnIndex, { dataType: newType });
         }
     }
 
@@ -887,203 +810,356 @@ export class DiagramEditorComponent implements OnInit, AfterViewInit {    // Ser
      * Toggles the primary key status of the selected column
      */
     togglePrimaryKey(): void {
-        if (this.selectedNodeId !== null && this.selectedColumnIndex >= 0 && this.selectedColumn) {
-            this.updateColumn(this.selectedNodeId, this.selectedColumnIndex, {
-                isPrimaryKey: !this.selectedColumn.isPrimaryKey
-            });
-        }
+        if (!this.selectedNodeId || this.selectedColumnIndex < 0 || !this.selectedColumn) return;
+
+        this.updateColumn(this.selectedNodeId, this.selectedColumnIndex, {
+            isPrimaryKey: !this.selectedColumn.isPrimaryKey
+        });
     }
 
     /**
      * Toggles the foreign key status of the selected column
      */
     toggleForeignKey(): void {
-        if (this.selectedNodeId !== null && this.selectedColumnIndex >= 0 && this.selectedColumn) {
-            this.updateColumn(this.selectedNodeId, this.selectedColumnIndex, {
-                isForeignKey: !this.selectedColumn.isForeignKey
-            });
+        if (!this.selectedNodeId || this.selectedColumnIndex < 0 || !this.selectedColumn) return;
 
-            // If setting as foreign key, prompt for reference
-            if (!this.selectedColumn.isForeignKey) {
-                // Get list of available tables (excluding this one)
-                const availableTables = this.nodes
-                    .filter(node => node.id !== this.selectedNodeId)
-                    .map(node => ({ id: node.id, name: node.name || node.label }));
-
-                if (availableTables.length === 0) {
-                    this.snackBar.open('No other tables available to reference', 'OK', { duration: 3000 });
-                    return;
-                }
-
-                // Simple implementation - would be better with a proper dialog
-                const targetTable = prompt(
-                    `Referenced table (${availableTables.map(t => t.name).join(', ')}):`,
-                    availableTables[0]?.name
-                );
-
-                if (targetTable) {
-                    const targetNode = availableTables.find(t => t.name === targetTable);
-                    if (targetNode) {
-                        // For now just set reference to the first column of target table
-                        const targetTableNode = this.nodes.find(n => n.id === targetNode.id);
-                        const targetColumn = targetTableNode?.columns?.[0]?.name || 'id';
-
-                        this.updateColumn(this.selectedNodeId, this.selectedColumnIndex, {
-                            references: {
-                                table: targetNode.id,
-                                column: targetColumn
-                            }
-                        });
-                    }
-                }
-            }
-        }
+        this.updateColumn(this.selectedNodeId, this.selectedColumnIndex, {
+            isForeignKey: !this.selectedColumn.isForeignKey
+        });
     }
 
     /**
      * Toggles the nullable status of the selected column
      */
     toggleNullable(): void {
-        if (this.selectedNodeId !== null && this.selectedColumnIndex >= 0 && this.selectedColumn) {
-            this.updateColumn(this.selectedNodeId, this.selectedColumnIndex, {
-                isNullable: !this.selectedColumn.isNullable
-            });
-        }
+        if (!this.selectedNodeId || this.selectedColumnIndex < 0 || !this.selectedColumn) return;
+
+        this.updateColumn(this.selectedNodeId, this.selectedColumnIndex, {
+            isNullable: !this.selectedColumn.isNullable
+        });
     }
 
     /**
      * Deletes the selected column
      */
     deleteColumn(): void {
-        if (this.selectedNodeId !== null && this.selectedColumnIndex >= 0) {
-            this.removeColumn(this.selectedNodeId, this.selectedColumnIndex);
-        }
+        if (!this.selectedNodeId || this.selectedColumnIndex < 0) return;
+
+        this.removeColumn(this.selectedNodeId, this.selectedColumnIndex);
     }
 
     /**
      * After the view is initialized
      */
     ngAfterViewInit(): void {
-        // Set up the column context menu position
-        if (this.columnContextMenuTrigger) {
-            this.columnContextMenuTrigger._handleClick = (event: MouseEvent) => {
-                if (this.columnContextMenuTrigger.menuOpen) {
-                    this.columnContextMenuTrigger.closeMenu();
-                } else {
-                    this.columnContextMenuTrigger.openMenu();
+        // Initialize the infinite canvas
+        this.initializeInfiniteCanvas();
+    }
 
-                    // Position menu at click point
-                    setTimeout(() => {
-                        const menu = document.querySelector('.mat-mdc-menu-panel') as HTMLElement;
-                        if (menu) {
-                            menu.style.position = 'fixed';
-                            menu.style.left = `${event.clientX}px`;
-                            menu.style.top = `${event.clientY}px`;
-                        }
-                    });
-                }
-            };
+    /**
+     * Initialize the infinite canvas with a centered viewport 
+     */
+    initializeInfiniteCanvas(): void {
+        // Position the infinite canvas so it starts in the center
+        const container = document.querySelector('.graph-container') as HTMLElement;
+        if (container) {
+            // Center the viewport in the middle of our large canvas
+            container.scrollLeft = 0;
+            container.scrollTop = 0;
         }
-
-        // Trigger initial update
-        this.update$.next();
-        this.cdr.detectChanges();
     }
 
     /**
      * Creates a link/relationship between two nodes
-     * @param sourceId Source node ID
-     * @param targetId Target node ID
      */
     createLink(sourceId: string, targetId: string): void {
         if (sourceId === targetId) {
-            this.snackBar.open('Cannot connect a node to itself', 'OK', { duration: 3000 });
+            this.snackBar.open('Cannot create a relationship to the same table', 'Close', { duration: 3000 });
             return;
         }
 
-        // Open a dialog to choose relationship type
-        const relationTypes = Object.values(RelationType);
-        const typeOptions = relationTypes.map(type => `${type}`).join(', ');
-        const relationType = prompt(`Choose relationship type (${typeOptions}):`, RelationType.OneToMany) as RelationType;
-
-        if (!relationType) {
-            // Cancelled by user
-            return;
-        }
-
-        // Find source and target nodes
-        const sourceNode = this.nodes.find(n => n.id === sourceId);
-        const targetNode = this.nodes.find(n => n.id === targetId);
-
-        if (!sourceNode || !targetNode) {
-            this.snackBar.open('Invalid source or target node', 'OK', { duration: 3000 });
-            return;
-        }
-
-        // Create a new relationship
-        const newRelation: RelationLink = {
-            id: `link-${this.utilsService.generateUniqueId()}`,
+        const linkId = 'link-' + this.utilsService.generateId();
+        const link: RelationLink = {
+            id: linkId,
             source: sourceId,
             target: targetId,
-            type: relationType,
-            label: relationType,
-            // Add points for path rendering
-            points: [
-                { x: sourceNode.x || 0, y: sourceNode.y || 0 },
-                { x: targetNode.x || 0, y: targetNode.y || 0 }
-            ]
+            type: RelationType.OneToMany, // Default type
+            label: '1:N'
         };
 
-        // Add the relationship to the diagram
-        this.diagramService.addLink(newRelation);
-        this.update$.next();
-        this.cdr.detectChanges();
-        this.showNotification(`Created ${relationType} relationship`);
+        this.diagramService.addLink(link);
+        this.selectedLink = link;
+        this.snackBar.open('Relationship created', 'Close', { duration: 2000 });
     }
 
     /**
-     * Start dragging the properties panel
-     * @param event Mouse event from the panel header
+     * Calculates the SVG path for a link
+     */
+    calculateLinkPath(link: RelationLink): string {
+        // Always get fresh connection points to ensure they reflect current node dimensions
+        const connection = this.diagramService.getConnectionPoints(link.source, link.target);
+
+        if (!connection) {
+            return ''; // No valid connection points
+        }
+
+        const { source, target } = connection;
+
+        // Draw a curved line between nodes
+        const midX = (source.x + target.x) / 2;
+        const midY = (source.y + target.y) / 2;
+        const dx = target.x - source.x;
+        const dy = target.y - source.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+
+        // Determine appropriate curve based on source and target positions
+        let curveX = 0;
+        let curveY = 0;
+
+        // Horizontal alignment - add vertical curve
+        if (Math.abs(dy) < 20) {
+            curveY = distance / 4;
+        }
+        // Vertical alignment - add horizontal curve
+        else if (Math.abs(dx) < 20) {
+            curveX = distance / 4;
+        }
+        // Diagonal relationships
+        else {
+            // Add a slight curve for diagonal lines too, for visual appeal
+            const normalizeX = dx / distance;
+            const normalizeY = dy / distance;
+            // Create curve perpendicular to the line
+            curveX = -normalizeY * (distance / 8);
+            curveY = normalizeX * (distance / 8);
+        }
+
+        // Create a smooth bezier curve
+        const controlX = midX + curveX;
+        const controlY = midY + curveY;
+        return `M${source.x},${source.y} Q${controlX},${controlY} ${target.x},${target.y}`;
+    }
+
+    /**
+     * Calculates the position for link labels
+     */
+    calculateLinkLabelPosition(link: RelationLink): { x: number, y: number } {
+        const connection = this.diagramService.getConnectionPoints(link.source, link.target);
+
+        if (!connection) {
+            return { x: 0, y: 0 };
+        }
+
+        const { source, target } = connection;
+
+        // Position the label at the middle of the link with a slight offset
+        return {
+            x: source.x + (target.x - source.x) / 2,
+            y: source.y + (target.y - source.y) / 2 - 10
+        };
+    }
+
+    /**
+     * Starts dragging the properties panel
      */
     startPropertiesPanelDrag(event: MouseEvent): void {
-        // Only handle left mouse button
-        if (event.button !== 0) return;
-
         this.isPropertiesPanelDragging = true;
-        const panel = event.currentTarget as HTMLElement;
-        const panelRect = panel.getBoundingClientRect();
+        const startX = event.clientX;
+        const startY = event.clientY;
+        const initialX = this.propertiesPanelPosition.x;
+        const initialY = this.propertiesPanelPosition.y;
 
-        // Calculate the offset of the mouse position from the panel's top-left corner
-        const offsetX = event.clientX - panelRect.left;
-        const offsetY = event.clientY - panelRect.top;
+        const onMouseMove = (moveEvent: MouseEvent) => {
+            const dx = moveEvent.clientX - startX;
+            const dy = moveEvent.clientY - startY;
 
-        const mouseMoveHandler = (moveEvent: MouseEvent) => {
-            if (this.isPropertiesPanelDragging) {
-                // Calculate new position
-                const x = moveEvent.clientX - offsetX;
-                const y = moveEvent.clientY - offsetY;
+            this.propertiesPanelPosition = {
+                x: initialX - dx, // Right position decreases as the mouse moves right
+                y: initialY + dy
+            };
 
-                // Update panel position
-                const panelElement = panel.closest('.properties-panel') as HTMLElement;
-                if (panelElement) {
-                    panelElement.style.left = `${x}px`;
-                    panelElement.style.top = `${y}px`;
-                    // Store position for persistence
-                    this.propertiesPanelPosition = { x, y };
-                }
-            }
+            this.cdr.markForCheck();
         };
 
-        const mouseUpHandler = () => {
+        const onMouseUp = () => {
             this.isPropertiesPanelDragging = false;
-            document.removeEventListener('mousemove', mouseMoveHandler);
-            document.removeEventListener('mouseup', mouseUpHandler);
+            document.removeEventListener('mousemove', onMouseMove);
+            document.removeEventListener('mouseup', onMouseUp);
+            this.cdr.markForCheck();
         };
 
-        document.addEventListener('mousemove', mouseMoveHandler);
-        document.addEventListener('mouseup', mouseUpHandler);
+        document.addEventListener('mousemove', onMouseMove);
+        document.addEventListener('mouseup', onMouseUp);
 
-        // Prevent text selection while dragging
         event.preventDefault();
+    }    /**
+     * Toggles through relationship types for the selected link
+     */
+    toggleLinkType(): void {
+        if (!this.selectedLink) return;
+
+        // Create a cycle of relationship types
+        const types = [
+            RelationType.OneToOne,
+            RelationType.OneToMany,
+            RelationType.ManyToOne,
+            RelationType.ManyToMany
+        ];
+
+        // Find the current type and get the next one
+        const currentType = this.selectedLink.type ?? RelationType.OneToOne;
+        const currentIndex = types.indexOf(currentType);
+        const nextIndex = (currentIndex + 1) % types.length;
+        const nextType = types[nextIndex];
+
+        // Update the link with the new type
+        this.updateLink(this.selectedLink.id, {
+            type: nextType,
+            label: this.getLabelForType(nextType)
+        });
+
+        this.snackBar.open(`Changed to ${this.getLabelForType(nextType)} relationship`, 'OK', {
+            duration: 2000
+        });
+    }
+
+    /**
+     * Gets a display label for a relationship type
+     */
+    getLabelForType(type: RelationType): string {
+        switch (type) {
+            case RelationType.OneToOne: return '1:1';
+            case RelationType.OneToMany: return '1:N';
+            case RelationType.ManyToOne: return 'N:1';
+            case RelationType.ManyToMany: return 'N:M';
+            default: return String(type);
+        }
+    }
+
+    /**
+     * Shows a dialog to rename the link label
+     */
+    renameLinkLabel(): void {
+        if (!this.selectedLink) return;
+
+        const newLabel = prompt('Enter relationship label:', this.selectedLink.label ?? '');
+        if (newLabel !== null) {
+            this.updateLink(this.selectedLink.id, { label: newLabel });
+        }
+    }
+
+    /**
+     * Flips the direction of the selected link
+     */
+    flipLinkDirection(): void {
+        if (!this.selectedLink) return;
+
+        // Swap the source and target nodes
+        const newSource = this.selectedLink.target;
+        const newTarget = this.selectedLink.source;
+
+        // Also swap the relationship type if it's directional
+        let newType = this.selectedLink.type ?? RelationType.OneToOne;
+        if (newType === RelationType.OneToMany) {
+            newType = RelationType.ManyToOne;
+        } else if (newType === RelationType.ManyToOne) {
+            newType = RelationType.OneToMany;
+        }
+
+        this.updateLink(this.selectedLink.id, {
+            source: newSource,
+            target: newTarget,
+            type: newType,
+            label: this.getLabelForType(newType)
+        });
+
+        this.snackBar.open('Relationship direction flipped', 'OK', { duration: 2000 });
+    }
+
+    /**
+     * Removes the selected link
+     */
+    removeSelectedLink(): void {
+        if (!this.selectedLink) return;
+
+        this.removeLink(this.selectedLink.id);
+    }    /**
+     * Calculates the display height of a node based on its content
+     * @param node The entity node to calculate height for
+     * @returns The calculated height for display
+     */
+    calculateNodeDisplayHeight(node: EntityNode): number {
+        if (!node.columns || node.columns.length === 0) {
+            return 100; // Base height for nodes without columns
+        }
+
+        // Use the same calculation method as in DiagramService.calculateNodeHeight
+        // for consistency in calculations
+        const headerHeight = 40;
+        const footerHeight = 0;
+        const columnHeight = 30;
+        const numberOfColumns = node.columns.length;
+
+        // Apply a similar calculation as in the DiagramService
+        const maxColumnDisplayCount = 10;
+        const effectiveColumnCount = Math.min(numberOfColumns, maxColumnDisplayCount);
+        const calculatedHeight = headerHeight + (effectiveColumnCount * columnHeight) + footerHeight;
+
+        // Use the greater of calculated height or base height (100px)
+        return Math.max(calculatedHeight, 100);
+    }
+
+    /**
+     * Determines the cursor style when hovering over entity nodes during link creation
+     * @param node The entity node to check
+     * @returns The appropriate cursor style
+     */
+    getLinkCreationCursor(node: EntityNode): string {
+        if (!this.isCreatingLink) {
+            return 'pointer'; // Default cursor
+        }
+
+        if (this.sourceNodeForLink === node.id) {
+            return 'not-allowed'; // Can't link to self
+        }
+
+        return 'crosshair'; // Cursor indicates target selection
+    }
+
+    /**
+     * Refreshes all links connected to a specific node
+     * @param nodeId ID of the node whose links need to be refreshed
+     */
+    refreshLinksForNode(nodeId: string): void {
+        // Find all links that connect to this node
+        const connectedLinks = this.links.filter(link =>
+            link.source === nodeId || link.target === nodeId
+        );
+
+        // If no links are connected to this node, return early
+        if (connectedLinks.length === 0) return;
+
+        // Force a refresh of the UI
+        this.update$.next();
+        this.cdr.detectChanges();
+    }
+
+    /**
+     * Handle mouse wheel events for zooming
+     */
+    @HostListener('wheel', ['$event'])
+    onMouseWheel(event: WheelEvent): void {
+        // Check if Ctrl key is pressed for zooming (standard browser behavior)
+        if (event.ctrlKey) {
+            event.preventDefault();
+
+            if (event.deltaY < 0) {
+                // Zoom in - wheel up
+                this.zoomIn();
+            } else {
+                // Zoom out - wheel down
+                this.zoomOut();
+            }
+        }
     }
 }

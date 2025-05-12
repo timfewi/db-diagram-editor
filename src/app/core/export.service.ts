@@ -283,4 +283,41 @@ export class ExportService {
         const pascal = this.formatGraphQLTypeName(name);
         return pascal.charAt(0).toLowerCase() + pascal.slice(1);
     }
+
+    /**
+     * Downloads content as a JSON file
+     * @param content JSON content to download
+     * @param filename Name of the file
+     */
+    downloadAsJson(content: string | object, filename: string): void {
+        const jsonContent = typeof content === 'string' ? content : JSON.stringify(content, null, 2);
+        const blob = new Blob([jsonContent], { type: 'application/json' });
+        this.downloadBlob(blob, filename);
+    }
+
+    /**
+     * Downloads content as a text file
+     * @param content Text content to download
+     * @param filename Name of the file
+     */
+    downloadAsText(content: string, filename: string): void {
+        const blob = new Blob([content], { type: 'text/plain' });
+        this.downloadBlob(blob, filename);
+    }
+
+    /**
+     * Downloads a Blob as a file
+     * @param blob Blob content
+     * @param filename Name of the file
+     */
+    private downloadBlob(blob: Blob, filename: string): void {
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+    }
 }

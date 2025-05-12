@@ -10,7 +10,8 @@
                 <mat-icon>add_box</mat-icon>
                 Add Table
             </button>
-            <button mat-raised-button color="primary" [disabled]="isCreatingLink" (click)="isCreatingLink = false">
+            <button mat-raised-button color="primary" [disabled]="isCreatingLink"
+                (click)="isCreatingLink ? (isCreatingLink = false) : startLinkCreation()">
                 <mat-icon>{{ isCreatingLink ? 'cancel' : 'add_link' }}</mat-icon>
                 {{ isCreatingLink ? 'Cancel Link' : 'Add Relationship' }}
             </button>
@@ -29,7 +30,7 @@
             <button mat-raised-button color="accent" (click)="saveDiagram()">
                 <mat-icon>save</mat-icon>
                 Save
-            </button> 
+            </button>
             <button mat-raised-button (click)="exportDiagram()">
                 <mat-icon>cloud_download</mat-icon>
                 Export JSON
@@ -55,177 +56,114 @@
                 <mat-icon>{{ gridSnapEnabled ? 'grid_on' : 'grid_off' }}</mat-icon>
             </button>
         </div>
-    </div> 
-    
+    </div>
+     
     <!-- Graph container -->
     <div class="graph-container" [class.grid-enabled]="gridSnapEnabled">
-        <!-- Debug info for visibility testing -->
         <div *ngIf="nodes.length > 0" class="debug-info">
             Nodes count: {{nodes.length}} | Links count: {{links.length}}
-        </div> 
-        <!-- Test nodes for direct DOM rendering -->
-        <!-- <div class="test-nodes">
-            <div *ngFor="let node of nodes" class="test-node" [class.selected]="selectedNode?.id === node.id"
-                [class.creating-link]="isCreatingLink"
-                [class.link-source]="isCreatingLink && sourceNodeForLink === node.id" [style.left.px]="node.x"
-                [style.top.px]="node.y" [style.width.px]="node.dimension?.width || 200"
-                [style.height.px]="(node.columns?.length || 1) * 30 + 40"
-                [style.background-color]="node.metadata?.style?.backgroundColor || '#1976d2'"
-                (click)="onNodeSelect(node)" (mousedown)="startDragging($event, node)" [attr.data-node-id]="node.id">
-                <div class="test-node-header">{{ node.name || node.label }}</div>
-                <div class="test-node-columns">
-                    <div *ngFor="let column of node.columns; let i = index" class="test-column"
-                        [class.primary-key]="column.isPrimaryKey" [class.foreign-key]="column.isForeignKey"
-                        (contextmenu)="openColumnMenu($event, node.id, i, column)">
-                        {{ column.name }}: {{ column.dataType }}
-                        <span *ngIf="column.isPrimaryKey" class="key-indicator">🔑</span>
-                        <span *ngIf="column.isForeignKey" class="key-indicator">🔗</span>
-                    </div>
-                </div>
-                <div class="test-node-actions">
-                    <button class="action-btn" (click)="$event.stopPropagation(); addColumn(node.id)"
-                        title="Add Column">+</button>
-                    <button class="action-btn"
-                        (click)="$event.stopPropagation(); updateNode(node.id, { name: prompt('Table name:', node.name) })"
-                        title="Rename">✏️</button>
-                    <button class="action-btn danger" (click)="$event.stopPropagation(); removeNode(node.id)"
-                        title="Delete">🗑️</button>
-                </div>
-            </div>
-        </div> -->
-        
-        <ngx-graph class="graph" [nodes]="nodes" [links]="links" [scheme]="colorScheme" [update$]="update$"
-            [enableZoom]="true" [autoZoom]="false" [autoCenter]="true" [panOnZoom]="true" [draggingEnabled]="true"
-            [panOffsetX]="0" [panOffsetY]="0" [layout]="'dagre'" [layoutSettings]="layoutSettings" [curve]="'basis'"
-            (select)="onNodeSelect($any($event))" (linkSelect)="onLinkSelect($any($event))"
-            (nodePositionChange)="onNodePositionChange($any($event))" #graph>
-            
-            <!-- Node Template -->
-            <ng-template #nodeTemplate let-node>
-                <div class="node-wrapper entity-node" [class.selected]="selectedNode?.id === node.id"
+        </div>
+
+        <!-- Custom graph implementation with infinite canvas -->
+        <div class="entity-graph" [style.transform]="'scale(' + currentZoom + ')'">
+            <!-- Entity nodes -->
+            <div class="entity-nodes">
+                <div *ngFor="let node of nodes" class="entity-node" [class.selected]="selectedNode?.id === node.id"
                     [class.creating-link]="isCreatingLink"
-                    [class.link-source]="isCreatingLink && sourceNodeForLink === node.id" (click)="onNodeSelect(node)">
+                    [class.link-source]="isCreatingLink && sourceNodeForLink === node.id" [style.left.px]="node.x"
+                    [style.top.px]="node.y" [style.width.px]="node.dimension?.width || 200"
+                    [style.height.px]="calculateNodeDisplayHeight(node)"
+                    [style.background-color]="node.metadata?.style?.backgroundColor || '#fff'"
+                    [style.cursor]="isCreatingLink ? getLinkCreationCursor(node) : 'pointer'"
+                    [attr.data-node-id]="node.id" (click)="onNodeSelect(node)"
+                    (mousedown)="startDragging($event, node)">
 
-                    <div class="entity-header" [attr.data-node-id]="node.id">
-                        <div class="entity-title">{{ node.name }}</div>
+                    <div class="entity-header">
+                        <div class="entity-title">{{ node.name || node.label }}</div>
                         <div class="entity-actions">
-                            <button mat-icon-button [matMenuTriggerFor]="nodeMenu" (click)="$event.stopPropagation()">
-                                <mat-icon>more_vert</mat-icon>
-                            </button>
-
-                            <!-- Node Menu -->
-                            <mat-menu #nodeMenu="matMenu"> <button mat-menu-item
-                                    (click)="updateNode(node.id, { name: prompt('Table name:', node.name) })">
-                                    <mat-icon>edit</mat-icon>
-                                    Rename
-                                </button>
-                                <button mat-menu-item (click)="addColumn(node.id)">
-                                    <mat-icon>add</mat-icon>
-                                    Add Column
-                                </button>
-                                <button mat-menu-item *ngIf="!isCreatingLink" (click)="startLinkCreation(node.id)">
-                                    <mat-icon>link</mat-icon>
-                                    Create Relationship
-                                </button>
-                                <button mat-menu-item (click)="removeNode(node.id)">
-                                    <mat-icon>delete</mat-icon>
-                                    Delete Table
-                                </button>
-                            </mat-menu>
+                            <button class="action-btn" (click)="$event.stopPropagation(); addColumn(node.id)"
+                                title="Add Column">+</button>
+                            <button class="action-btn"
+                                (click)="$event.stopPropagation(); updateNode(node.id, { name: prompt('Table name:', node.name) || '' })"
+                                title="Rename">✏️</button>
+                            <button class="action-btn danger" (click)="$event.stopPropagation(); removeNode(node.id)"
+                                title="Delete">🗑️</button>
                         </div>
                     </div>
 
-                    <!-- Columns -->
                     <div class="entity-columns">
                         <div *ngFor="let column of node.columns; let i = index" class="entity-column"
                             [class.primary-key]="column.isPrimaryKey" [class.foreign-key]="column.isForeignKey"
                             (contextmenu)="openColumnMenu($event, node.id, i, column)">
-                            <div class="column-info">
-                                <span class="column-name">{{ column.name }}</span>
-                                <span class="column-type">{{ column.dataType }}</span>
-                            </div>
-
-                            <div class="column-actions">
-                                <button mat-icon-button [matMenuTriggerFor]="columnMenu"
-                                    (click)="$event.stopPropagation()">
-                                    <mat-icon>more_horiz</mat-icon>
-                                </button>
-
-                                <!-- Column Menu -->
-                                <mat-menu #columnMenu="matMenu"> <button mat-menu-item
-                                        (click)="updateColumn(node.id, i, { name: prompt('Column name:', column.name) })">
-                                        <mat-icon>edit</mat-icon>
-                                        Rename
-                                    </button>
-                                    <button mat-menu-item
-                                        (click)="updateColumn(node.id, i, { dataType: prompt('Data type:', column.dataType) })">
-                                        <mat-icon>code</mat-icon>
-                                        Change Type
-                                    </button>
-                                    <button mat-menu-item
-                                        (click)="updateColumn(node.id, i, { isPrimaryKey: !column.isPrimaryKey })">
-                                        <mat-icon>{{ column.isPrimaryKey ? 'clear' : 'vpn_key' }}</mat-icon>
-                                        {{ column.isPrimaryKey ? 'Remove Primary Key' : 'Set as Primary Key' }}
-                                    </button>
-                                    <button mat-menu-item
-                                        (click)="updateColumn(node.id, i, { isForeignKey: !column.isForeignKey })">
-                                        <mat-icon>{{ column.isForeignKey ? 'clear' : 'link' }}</mat-icon>
-                                        {{ column.isForeignKey ? 'Remove Foreign Key' : 'Set as Foreign Key' }}
-                                    </button>
-                                    <button mat-menu-item
-                                        (click)="updateColumn(node.id, i, { isNullable: !column.isNullable })">
-                                        <mat-icon>{{ column.isNullable ? 'check_box' : 'check_box_outline_blank'
-                                            }}</mat-icon>
-                                        {{ column.isNullable ? 'Set as NOT NULL' : 'Set as NULL' }}
-                                    </button>
-                                    <button mat-menu-item (click)="removeColumn(node.id, i)">
-                                        <mat-icon>delete</mat-icon>
-                                        Delete Column
-                                    </button>
-                                </mat-menu>
-                            </div>
+                            {{ column.name }}: {{ column.dataType }}
+                            <span *ngIf="column.isPrimaryKey" class="key-indicator">🔑</span>
+                            <span *ngIf="column.isForeignKey" class="key-indicator">🔗</span>
                         </div>
                     </div>
                 </div>
-            </ng-template>
+            </div> <!-- Entity links/relationships -->
+            <svg class="entity-links">
+                <defs> <!-- Arrow marker definitions -->
+                    <marker id="arrow" viewBox="0 -5 10 10" refX="8" refY="0" markerWidth="6" markerHeight="6"
+                        orient="auto">
+                        <path d="M0,-5L10,0L0,5" class="arrow-head"></path>
+                    </marker>
+                    <marker id="arrow-selected" viewBox="0 -5 10 10" refX="8" refY="0" markerWidth="8" markerHeight="8"
+                        orient="auto">
+                        <path d="M0,-5L10,0L0,5" class="arrow-head-selected"></path>
+                    </marker>
 
-            <!-- Link Template -->
-            <ng-template #linkTemplate let-link>
-                <svg:g class="edge" [class.selected]="selectedLink?.id === link.id">
-                    <svg:path class="edge-path" [attr.stroke-width]="2" marker-end="url(#arrow)">
-                    </svg:path>
+                    <!-- Different markers for different relationship types -->
+                    <marker id="one-to-one" viewBox="0 -5 10 10" refX="9" refY="0" markerWidth="6" markerHeight="6"
+                        orient="auto">
+                        <path d="M0,-5L10,0L0,5" class="arrow-head-one-to-one"></path>
+                    </marker>
+                    <marker id="one-to-many" viewBox="0 -5 10 10" refX="9" refY="0" markerWidth="7" markerHeight="7"
+                        orient="auto">
+                        <path d="M0,-5L10,0L0,5" class="arrow-head-one-to-many"></path>
+                    </marker>
+                    <marker id="many-to-one" viewBox="0 -5 10 10" refX="9" refY="0" markerWidth="7" markerHeight="7"
+                        orient="auto">
+                        <path d="M0,-5L10,0L0,5" class="arrow-head-many-to-one"></path>
+                    </marker>
+                    <marker id="many-to-many" viewBox="0 -5 10 10" refX="9" refY="0" markerWidth="8" markerHeight="8"
+                        orient="auto">
+                        <path d="M0,-5L10,0L0,5" class="arrow-head-many-to-many"></path>
+                    </marker>
+                </defs>
+                <g *ngFor="let link of links" class="entity-link" [class.selected]="selectedLink?.id === link.id"
+                    (click)="onLinkSelect(link)" (contextmenu)="openLinkMenu($event, link)"
+                    matTooltip="Click to edit relationship | Right-click for quick actions" matTooltipPosition="above">
+                    <!-- Invisible wider path for easier clicking -->
+                    <path [attr.d]="calculateLinkPath(link)" class="link-hitarea" stroke="transparent" stroke-width="16"
+                        fill="none" /> <!-- Visible path for the relationship -->
+                    <path [attr.d]="calculateLinkPath(link)" class="link-path" [ngClass]="{'one-to-one': link.type === RelationType.OneToOne,
+                                      'one-to-many': link.type === RelationType.OneToMany,
+                                      'many-to-one': link.type === RelationType.ManyToOne,
+                                      'many-to-many': link.type === RelationType.ManyToMany}" [attr.marker-end]="selectedLink?.id === link.id ? 'url(#arrow-selected)' : 
+                                            link.type === RelationType.OneToOne ? 'url(#one-to-one)' :
+                                            link.type === RelationType.OneToMany ? 'url(#one-to-many)' :
+                                            link.type === RelationType.ManyToOne ? 'url(#many-to-one)' :
+                                            link.type === RelationType.ManyToMany ? 'url(#many-to-many)' : 
+                                            'url(#arrow)'" /> <!-- Background for the text -->
+                    <rect *ngIf="selectedLink?.id === link.id" [attr.x]="calculateLinkLabelPosition(link).x - 20"
+                        [attr.y]="calculateLinkLabelPosition(link).y - 12" width="40" height="16" rx="4"
+                        class="link-label-bg" />
 
-                    <svg:text class="edge-label" text-anchor="middle" alignment-baseline="central"
-                        [attr.font-size]="12">
-                        {{ link.label || link.type }}
-                    </svg:text>
-
-                    <svg:g class="edge-actions" (click)="$event.stopPropagation()">
-                        <svg:circle r="12" cx="0" cy="0" fill="#fff" stroke="#ccc"></svg:circle>
-                        <svg:g transform="translate(-6, -6) scale(0.8)">
-                            <svg:path
-                                d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"
-                                fill="#666"></svg:path>
-                        </svg:g>
-                        <svg:rect width="100" height="100" fill="transparent" (click)="onLinkSelect(link)"></svg:rect>
-                    </svg:g>
-                </svg:g>
-            </ng-template>
-
-            <!-- Edge Arrow Marker -->
-            <svg:defs>
-                <svg:marker id="arrow" viewBox="0 -5 10 10" refX="8" refY="0" markerWidth="6" markerHeight="6"
-                    orient="auto">
-                    <svg:path d="M0,-5L10,0L0,5" class="arrow-head"></svg:path>
-                </svg:marker>
-            </svg:defs>
-
-        </ngx-graph>
+                    <text [attr.x]="calculateLinkLabelPosition(link).x" [attr.y]="calculateLinkLabelPosition(link).y"
+                        class="link-label" text-anchor="middle" (click)="$event.stopPropagation(); renameLinkLabel()"
+                        [matTooltip]="'Click to edit label: ' + (link.label || (link.type ? getLabelForType(link.type) : 'link'))">
+                        {{ link.label || (link.type ? getLabelForType(link.type) : 'link') }}
+                    </text>
+                </g>
+            </svg>
+        </div>
     </div>
 
     <!-- Properties panel (when node is selected) -->
-    <div class="properties-panel" *ngIf="selectedNode || selectedLink">
-        <div class="panel-header">
+    <div class="properties-panel" *ngIf="selectedNode || selectedLink" [style.top.px]="propertiesPanelPosition.y"
+        [style.right.px]="propertiesPanelPosition.x" [class.dragging]="isPropertiesPanelDragging">
+        <div class="panel-header" (mousedown)="startPropertiesPanelDrag($event)">
             <h3>{{ selectedNode ? 'Table Properties' : 'Relationship Properties' }}</h3>
             <button mat-icon-button (click)="selectedNode = null; selectedLink = null">
                 <mat-icon>close</mat-icon>
@@ -343,6 +281,29 @@
             <button mat-menu-item (click)="deleteColumn()" class="warn-menu-item">
                 <mat-icon color="warn">delete</mat-icon>
                 <span class="warn-text">Delete Column</span>
+            </button>
+        </mat-menu>
+    </div>
+
+    <!-- Add a context menu for links that uses MatMenu -->
+    <div style="position: absolute; visibility: hidden">
+        <div #linkContextMenuTrigger="matMenuTrigger" [matMenuTriggerFor]="linkContextMenu"></div>
+        <mat-menu #linkContextMenu="matMenu">
+            <button mat-menu-item (click)="toggleLinkType()">
+                <mat-icon>loop</mat-icon>
+                <span>Change Relationship Type</span>
+            </button>
+            <button mat-menu-item (click)="renameLinkLabel()">
+                <mat-icon>edit</mat-icon>
+                <span>Edit Label</span>
+            </button>
+            <button mat-menu-item (click)="flipLinkDirection()">
+                <mat-icon>swap_horiz</mat-icon>
+                <span>Flip Direction</span>
+            </button>
+            <button mat-menu-item (click)="removeSelectedLink()" class="warn-menu-item">
+                <mat-icon color="warn">delete</mat-icon>
+                <span class="warn-text">Delete Relationship</span>
             </button>
         </mat-menu>
     </div>

@@ -47,8 +47,8 @@ export class DiagramService {
         } catch (error) {
             console.error('Error loading diagram from localStorage', error);
         }
-    }    
-    
+    }
+
     /**
      * Saves current diagram to localStorage
      */
@@ -85,7 +85,7 @@ export class DiagramService {
             console.error('Error saving diagram to localStorage', error);
         }
     }
-    
+
     /**
      * Sets the current diagram and updates nodes and links
      * @param diagram The diagram to set
@@ -97,44 +97,32 @@ export class DiagramService {
         const safeNodes = diagram?.nodes || [];
         const safeLinks = diagram?.links || [];
 
-        // Ensure nodes and links have the properties needed for ngx-graph
+        // Prepare nodes with necessary properties
         const preparedNodes = safeNodes.map(node => ({
             ...node,
             id: node.id,
             label: node.name ?? node.label ?? 'Unnamed',
-            // Add position if not present
             x: node.x ?? Math.random() * 500,
             y: node.y ?? Math.random() * 500,
-            // Add dimension for proper rendering (required for ngx-graph)
             dimension: node.dimension || {
                 width: 200,
                 height: 150
             },
-            // Make sure data contains any properties that might be needed for rendering
             data: {
                 ...node,
                 columns: node.columns || []
             },
-            // NGX-Graph 10 specific properties
-            position: {
-                x: node.x ?? Math.random() * 500,
-                y: node.y ?? Math.random() * 500
-            },
-            // transform: `translate(${node.x ?? Math.random() * 500}, ${node.y ?? Math.random() * 500})`,
-            // Ensure columns are accessible
             columns: node.columns || []
         }));
 
+        // Prepare links with necessary properties
         const preparedLinks = safeLinks.map(link => ({
             ...link,
             id: link.id || `link-${Math.random()}`,
             source: link.source,
             target: link.target,
             label: link.label ?? link.type ?? 'link',
-            // NGX-Graph specific properties
-            points: link.points || [],
-            line: 'linear',  // Can be 'linear' or 'curve'
-            data: link // Store original data for reference
+            data: link
         }));
 
         const safeDiagram: Diagram = {
@@ -149,14 +137,12 @@ export class DiagramService {
         this.nodesSubject.next(preparedNodes);
         this.linksSubject.next(preparedLinks);
 
-        this.saveToLocalStorage();
-
-        // Add to history if tracking is enabled
+        this.saveToLocalStorage();        // Add to history if tracking is enabled
         if (trackInHistory && description) {
             this.historyService.addHistoryEntry(safeDiagram, description);
         }
     }
-    
+
     /**
      * Creates a new empty diagram
      */
@@ -238,11 +224,11 @@ export class DiagramService {
                 })
             );
         }
-    }    
-    
+    }
+
     /**
     * Adds a new node to the diagram
-    */    
+    */      
     addNode(node: EntityNode): void {
         console.log('DiagramService.addNode: Adding node', node);
 
@@ -252,11 +238,13 @@ export class DiagramService {
             name: node.name,
             x: node.x,
             y: node.y,
-            columns: node.columns,
-            metadata: node.metadata,
-            // Add these properties for rendering, but not for serialization
+            columns: node.columns || [],
             label: node.name, // For display purposes
-            dimension: node.dimension // For ngx-graph rendering
+            dimension: node.dimension || { width: 200, height: 150 },
+            metadata: node.metadata || {
+                selected: false,
+                expanded: true
+            }
         };
 
         const currentNodes = this.nodesSubject.getValue();
@@ -281,19 +269,21 @@ export class DiagramService {
 
         // Add to history
         this.historyService.addHistoryEntry(updatedDiagram, `Add table "${node.name}"`);
-    }
+    }    
     
     /**
      * Updates an existing node
      */
     updateNode(nodeId: string, updates: Partial<EntityNode>): void {
+        console.log('DiagramService.updateNode: Updating node', nodeId, updates);
+
         const currentNodes = this.nodesSubject.getValue();
         const nodeIndex = currentNodes.findIndex(n => n.id === nodeId);
 
         if (nodeIndex !== -1) {
             const updatedNodes = [...currentNodes];
             const oldNode = updatedNodes[nodeIndex];
-            updatedNodes[nodeIndex] = { ...oldNode, ...updates };
+            updatedNodes[nodeIndex] = { ...oldNode, ...updates };            // Emit the updated nodes immediately
             this.nodesSubject.next(updatedNodes);
 
             // Update the diagram
@@ -305,18 +295,23 @@ export class DiagramService {
                     lastModified: new Date()
                 };
                 this.diagramSubject.next(updatedDiagram);
-                this.saveToLocalStorage();
-
-                // Add to history with appropriate description
+                this.saveToLocalStorage();// Add to history with appropriate description
                 let description = `Update table "${oldNode.name}"`;
                 if (updates.name && updates.name !== oldNode.name) {
                     description = `Rename table "${oldNode.name}" to "${updates.name}"`;
                 }
-                this.historyService.addHistoryEntry(updatedDiagram, description);
+
+                // Skip adding position updates to history to avoid cluttering the history
+                const isPositionUpdate = updates.x !== undefined || updates.y !== undefined;
+                if (!isPositionUpdate) {
+                    this.historyService.addHistoryEntry(updatedDiagram, description);
+                }
             }
+        } else {
+            console.warn(`DiagramService.updateNode: Node with id ${nodeId} not found`);
         }
-    }    
-    
+    }
+
     /**
      * Removes a node and its connected links
      */
@@ -350,8 +345,8 @@ export class DiagramService {
             // Add to history
             this.historyService.addHistoryEntry(updatedDiagram, `Delete table "${nodeToRemove.name}"`);
         }
-    }    
-    
+    }
+
     /**
      * Adds a new link to the diagram
      */
@@ -390,7 +385,9 @@ export class DiagramService {
 
         // Add to history
         this.historyService.addHistoryEntry(updatedDiagram, `Add relationship between tables`);
-    }/**
+    }
+    
+    /**
      * Updates an existing link
      */
     updateLink(linkId: string, updates: Partial<RelationLink>): void {
@@ -418,7 +415,10 @@ export class DiagramService {
                 this.historyService.addHistoryEntry(updatedDiagram, `Update relationship`);
             }
         }
-    }    /**
+    }    
+    
+    
+    /**
      * Removes a link from the diagram
      */
     removeLink(linkId: string): void {
@@ -447,10 +447,22 @@ export class DiagramService {
 
     /**
      * Exports the current diagram as JSON
+     * @returns JSON string of the diagram
      */
     exportDiagramAsJson(): string {
-        const currentDiagram = this.diagramSubject.getValue();
-        return currentDiagram ? JSON.stringify(currentDiagram, null, 2) : '';
+        const currentDiagram = this.getCurrentDiagram();
+        if (!currentDiagram) {
+            return '{}';
+        }
+
+        // Create a complete diagram object with the current nodes and links
+        const diagram: Diagram = {
+            ...currentDiagram,
+            nodes: this.nodesSubject.getValue(),
+            links: this.linksSubject.getValue()
+        };
+
+        return JSON.stringify(diagram, null, 2);
     }
 
     /**
@@ -537,6 +549,206 @@ export class DiagramService {
      */
     canRedo(): boolean {
         return this.historyService.canRedo();
+    }    
+    
+    /**
+     * Calculates the connection points for a link between two nodes
+     * @param sourceId source node ID
+     * @param targetId target node ID
+     * @returns Connection points for the link
+     */
+    getConnectionPoints(sourceId: string, targetId: string): {
+        source: { x: number, y: number },
+        target: { x: number, y: number }
+    } | null {
+        const nodes = this.nodesSubject.getValue();
+        const sourceNode = nodes.find(n => n.id === sourceId);
+        const targetNode = nodes.find(n => n.id === targetId);
+
+        if (!sourceNode || !targetNode) return null;
+
+        // Get node dimensions and positions
+        const sourceWidth = sourceNode.dimension?.width ?? 200;
+        // Adjust height based on the number of columns if available
+        const sourceHeight = this.calculateNodeHeight(sourceNode);
+        const targetWidth = targetNode.dimension?.width ?? 200;
+        // Adjust height based on the number of columns if available
+        const targetHeight = this.calculateNodeHeight(targetNode);
+
+        // Get center points of each node
+        const sourceX = sourceNode.x! + sourceWidth / 2;
+        const sourceY = sourceNode.y! + sourceHeight / 2;
+        const targetX = targetNode.x! + targetWidth / 2;
+        const targetY = targetNode.y! + targetHeight / 2;
+
+        // Direction vector between centers
+        const dx = targetX - sourceX;
+        const dy = targetY - sourceY;
+
+        // Calculate intersection points with node boundaries using accurate method
+        const sourcePoint = this.findIntersectionPoint(
+            sourceX, sourceY, sourceWidth, sourceHeight, dx, dy
+        );
+
+        const targetPoint = this.findIntersectionPoint(
+            targetX, targetY, targetWidth, targetHeight, -dx, -dy
+        );
+
+        return {
+            source: sourcePoint,
+            target: targetPoint
+        };
+    }
+
+    /**
+     * Calculates the actual height of a node based on its content
+     * @param node The entity node to calculate height for
+     * @returns The calculated height of the node
+     */
+    private calculateNodeHeight(node: EntityNode): number {
+        const baseHeight = node.dimension?.height ?? 100;
+
+        // If there are no columns, return the base height
+        if (!node.columns || node.columns.length === 0) {
+            return baseHeight;
+        }
+
+        // Calculate height based on columns
+        // 1. Fixed header height (approximately)
+        const headerHeight = 40;
+        // 2. Fixed footer height (if any)
+        const footerHeight = 0;
+        // 3. Height per column (approximately)
+        const columnHeight = 30;
+        // 4. Number of visible columns
+        const numberOfColumns = node.columns.length;
+
+        // Calculate total height
+        // Limit maximum height to avoid overly tall nodes
+        const maxColumnDisplayCount = 10;
+        const effectiveColumnCount = Math.min(numberOfColumns, maxColumnDisplayCount);
+        const calculatedHeight = headerHeight + footerHeight + (effectiveColumnCount * columnHeight);
+
+        // Use the larger of calculated or specified height to avoid undersized nodes
+        return Math.max(calculatedHeight, baseHeight);
+    }
+    
+    /**
+     * Finds the intersection point of a line from the center of a node
+     * with the boundary of that node using the Cohen-Sutherland algorithm approach
+     */
+    private findIntersectionPoint(
+        centerX: number, centerY: number,
+        width: number, height: number,
+        dirX: number, dirY: number
+    ): { x: number, y: number } {
+        // Normalize direction vector
+        const length = Math.sqrt(dirX * dirX + dirY * dirY);
+        if (length === 0) return { x: centerX, y: centerY };
+
+        dirX = dirX / length;
+        dirY = dirY / length;
+
+        // Calculate half dimensions
+        const halfWidth = width / 2;
+        const halfHeight = height / 2;
+
+        // Calculate rectangle boundaries
+        const left = centerX - halfWidth;
+        const right = centerX + halfWidth;
+        const top = centerY - halfHeight;
+        const bottom = centerY + halfHeight;
+
+        // Calculate the intersection with each edge and find the one on the rectangle
+        const intersectTop = this.calculateTopIntersection(centerX, centerY, top, dirX, dirY, left, right);
+        if (intersectTop) return intersectTop;
+
+        const intersectBottom = this.calculateBottomIntersection(centerX, centerY, bottom, dirX, dirY, left, right);
+        if (intersectBottom) return intersectBottom;
+
+        const intersectLeft = this.calculateLeftIntersection(centerX, centerY, left, dirX, dirY, top, bottom);
+        if (intersectLeft) return intersectLeft;
+
+        const intersectRight = this.calculateRightIntersection(centerX, centerY, right, dirX, dirY, top, bottom);
+        if (intersectRight) return intersectRight;
+
+        // Fallback to the old method in case we missed anything
+        let t: number;
+
+        // Check horizontal boundaries
+        if (Math.abs(dirX) > 0.0001) {
+            const tx = halfWidth / Math.abs(dirX);
+            t = tx;
+        } else {
+            t = Number.MAX_VALUE;
+        }
+
+        // Check vertical boundaries
+        if (Math.abs(dirY) > 0.0001) {
+            const ty = halfHeight / Math.abs(dirY);
+            if (ty < t) t = ty;
+        }
+
+        return {
+            x: centerX + dirX * t,
+            y: centerY + dirY * t
+        };
+    }
+
+    private calculateTopIntersection(
+        centerX: number, centerY: number, top: number,
+        dirX: number, dirY: number, left: number, right: number
+    ): { x: number, y: number } | null {
+        if (dirY < 0) {
+            const t = (top - centerY) / dirY;
+            const x = centerX + dirX * t;
+            if (x >= left && x <= right) {
+                return { x, y: top };
+            }
+        }
+        return null;
+    }
+
+    private calculateBottomIntersection(
+        centerX: number, centerY: number, bottom: number,
+        dirX: number, dirY: number, left: number, right: number
+    ): { x: number, y: number } | null {
+        if (dirY > 0) {
+            const t = (bottom - centerY) / dirY;
+            const x = centerX + dirX * t;
+            if (x >= left && x <= right) {
+                return { x, y: bottom };
+            }
+        }
+        return null;
+    }
+
+    private calculateLeftIntersection(
+        centerX: number, centerY: number, left: number,
+        dirX: number, dirY: number, top: number, bottom: number
+    ): { x: number, y: number } | null {
+        if (dirX < 0) {
+            const t = (left - centerX) / dirX;
+            const y = centerY + dirY * t;
+            if (y >= top && y <= bottom) {
+                return { x: left, y };
+            }
+        }
+        return null;
+    }
+
+    private calculateRightIntersection(
+        centerX: number, centerY: number, right: number,
+        dirX: number, dirY: number, top: number, bottom: number
+    ): { x: number, y: number } | null {
+        if (dirX > 0) {
+            const t = (right - centerX) / dirX;
+            const y = centerY + dirY * t;
+            if (y >= top && y <= bottom) {
+                return { x: right, y };
+            }
+        }
+        return null;
     }
 }
 

@@ -33,50 +33,188 @@
 .graph-container {
     flex: 1;
     position: relative;
-    overflow: hidden;
+    overflow: auto;
+    /* Enable scrolling for infinite canvas */
     background-color: #fafafa;
+    min-height: 500px;
+    border: 1px solid #ddd;
+}
+
+/* Debug info panel */
+.debug-info {
+    position: fixed;
+    top: 70px;
+    /* Position it below the toolbar */
+    left: 10px;
+    background: rgba(255, 255, 255, 0.8);
+    padding: 5px 10px;
+    border-radius: 4px;
+    z-index: 100;
+    font-size: 12px;
+    color: #333;
+    border: 1px solid #ccc;
+    pointer-events: none;
+    /* Don\'t interfere with interactions */
+}
+
+/* Entity graph - The large working area */
+.entity-graph {
+    position: relative;
+    width: 10000px;
+    /* Much wider than the viewport */
+    height: 10000px;
+    /* Much taller than the viewport */
     background-image:
         linear-gradient(rgba(0, 0, 0, 0.1) 1px, transparent 1px),
         linear-gradient(90deg, rgba(0, 0, 0, 0.1) 1px, transparent 1px);
     background-size: 20px 20px;
-    min-height: 500px;
-    /* Ensure minimum height for visibility */
-    border: 1px solid #ddd;
-    /* Add border to see the container */
-
-    // When grid snap is enabled, make the grid more visible
-    &.grid-enabled {
-        background-image:
-            linear-gradient(rgba(0, 0, 0, 0.15) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(0, 0, 0, 0.15) 1px, transparent 1px);
-        background-size: 20px 20px;
-    }
-
-    /* Ensure ngx-graph takes the full container space */
-    .graph {
-        width: 100%;
-        height: 100%;
-        min-height: 500px;
-    }
-
-    /* Debug info panel */
-    .debug-info {
-        position: absolute;
-        top: 10px;
-        left: 10px;
-        background: rgba(255, 255, 255, 0.8);
-        padding: 5px 10px;
-        border-radius: 4px;
-        z-index: 100;
-        font-size: 12px;
-        color: #333;
-        border: 1px solid #ccc;
-    }
+    transform-origin: 0 0;
+    /* Set transform origin to top left */
 }
 
+/* When grid snap is enabled, make the grid more visible */
+.graph-container.grid-enabled .entity-graph {
+    background-image:
+        linear-gradient(rgba(0, 0, 0, 0.15) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0, 0, 0, 0.15) 1px, transparent 1px);
+    background-size: 20px 20px;
+}
+
+/* Entity nodes container */
+.entity-nodes {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 10;
+    pointer-events: none;
+    /* Let events pass through to individual nodes */
+}
+
+/* Entity links SVG */
+.entity-links {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 5;
+    pointer-events: none;
+    /* Let events pass through to individual paths */
+}
+
+/* Arrow heads */
+.arrow-head {
+    fill: #333;
+}
+
+.arrow-head-selected {
+    fill: #1976d2;
+}
+
+.arrow-head-one-to-one,
+.arrow-head-one-to-many,
+.arrow-head-many-to-one,
+.arrow-head-many-to-many {
+    fill: #555;
+}
+
+/* Entity link styles */
+.entity-link {
+    pointer-events: auto;
+    /* Enable click events on links */
+    cursor: pointer;
+}
+
+/* Link hitarea - invisible but wider for easier clicking */
+.link-hitarea {
+    pointer-events: all;
+    cursor: pointer;
+    transition: stroke 0.2s ease;
+}
+
+.link-hitarea:hover {
+    stroke: rgba(25, 118, 210, 0.1);
+    /* Subtle highlight on hover */
+}
+
+/* Visible path */
+.link-path {
+    stroke: #555;
+    stroke-width: 2.5px;
+    fill: none;
+    transition: all 0.2s ease;
+}
+
+/* Different relationship type styles */
+.link-path.one-to-one {
+    stroke: #673ab7;
+}
+
+.link-path.one-to-many {
+    stroke: #2196f3;
+}
+
+.link-path.many-to-one {
+    stroke: #ff9800;
+}
+
+.link-path.many-to-many {
+    stroke: #e91e63;
+}
+
+/* Link label */
+.link-label {
+    font-size: 12px;
+    fill: #555;
+    font-family: Arial, sans-serif;
+    transition: all 0.2s ease;
+    user-select: none;
+    /* Prevent text selection */
+    pointer-events: all;
+    /* Enable interaction */
+    cursor: pointer;
+}
+
+.link-label:hover {
+    font-weight: bold;
+    font-size: 13px;
+    fill: #1976d2;
+}
+
+/* Link label background */
+.link-label-bg {
+    fill: rgba(255, 255, 255, 0.85);
+    stroke: #1976d2;
+    stroke-width: 1px;
+}
+
+/* Hover effects for links */
+.entity-link:hover .link-path {
+    stroke-width: 3px;
+}
+
+.entity-link:hover .link-label {
+    font-weight: bold;
+    fill: #1976d2;
+}
+
+/* Selected link state */
+.entity-link.selected .link-path {
+    stroke-width: 3.5px;
+    stroke-dasharray: none;
+}
+
+.entity-link.selected .link-label {
+    font-weight: bold;
+    fill: #1976d2;
+    font-size: 13px;
+}
 
 /* Entity node styles */
 .entity-node {
+    position: absolute;
     background-color: white;
     border-radius: 4px;
     box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
@@ -85,161 +223,101 @@
     cursor: pointer;
     user-select: none;
     overflow: hidden;
-
-    &.selected {
-        box-shadow: 0 0 0 2px #1976d2, 0 2px 8px rgba(0, 0, 0, 0.2);
-    }
-
-    &.creating-link {
-        cursor: alias;
-    }
-
-    &.link-source {
-        box-shadow: 0 0 0 2px #4caf50, 0 2px 8px rgba(0, 0, 0, 0.2);
-    }
-
-    .entity-header {
-        background-color: #1976d2;
-        color: white;
-        padding: 10px 12px;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-
-        .entity-title {
-            font-weight: bold;
-            font-size: 16px;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-
-        .entity-actions {
-            display: flex;
-
-            button {
-                color: white;
-                width: 28px;
-                height: 28px;
-                line-height: 28px;
-
-                mat-icon {
-                    font-size: 18px;
-                    width: 18px;
-                    height: 18px;
-                    line-height: 18px;
-                }
-            }
-        }
-    }
-
-    .entity-columns {
-        padding: 8px 0;
-
-        .entity-column {
-            display: flex;
-            justify-content: space-between;
-            padding: 4px 12px;
-            border-bottom: 1px solid #eee;
-            font-size: 14px;
-
-            &:last-child {
-                border-bottom: none;
-            }
-
-            &.primary-key {
-                .column-name::before {
-                    content: "🔑 ";
-                }
-            }
-
-            &.foreign-key {
-                .column-name::before {
-                    content: "🔗 ";
-                }
-            }
-
-            .column-info {
-                display: flex;
-                gap: 8px;
-                align-items: center;
-                overflow: hidden;
-
-                .column-name {
-                    white-space: nowrap;
-                    overflow: hidden;
-                    text-overflow: ellipsis;
-                }
-
-                .column-type {
-                    color: #666;
-                    font-size: 12px;
-                }
-            }
-
-            .column-actions {
-                button {
-                    width: 24px;
-                    height: 24px;
-                    line-height: 24px;
-
-                    mat-icon {
-                        font-size: 16px;
-                        width: 16px;
-                        height: 16px;
-                        line-height: 16px;
-                    }
-                }
-            }
-        }
-    }
+    pointer-events: auto;
+    /* Enable events on nodes */
+    z-index: 20;
 }
 
-/* Edge/Link styles */
-:host ::ng-deep {
-    .edge {
-        cursor: pointer;
+.entity-node.selected {
+    box-shadow: 0 0 0 2px #1976d2, 0 2px 8px rgba(0, 0, 0, 0.2);
+}
 
-        .edge-path {
-            stroke: #666;
-            fill: none;
-        }
+.entity-node.creating-link {
+    cursor: alias;
+}
 
-        .edge-label {
-            fill: #333;
-            font-size: 12px;
-        }
+.entity-node.link-source {
+    box-shadow: 0 0 0 2px #4caf50, 0 2px 8px rgba(0, 0, 0, 0.2);
+}
 
-        .arrow-head {
-            fill: #666;
-        }
+.entity-header {
+    background-color: #1976d2;
+    color: white;
+    padding: 10px 12px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
 
-        &.selected {
-            .edge-path {
-                stroke: #1976d2;
-                stroke-width: 3px;
-            }
+.entity-title {
+    font-weight: bold;
+    font-size: 16px;
+    flex-grow: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
 
-            .arrow-head {
-                fill: #1976d2;
-            }
+.entity-actions {
+    display: flex;
+    gap: 4px;
+}
 
-            .edge-label {
-                fill: #1976d2;
-                font-weight: bold;
-            }
-        }
+.action-btn {
+    background: rgba(255, 255, 255, 0.2);
+    border: none;
+    color: white;
+    width: 24px;
+    height: 24px;
+    border-radius: 4px;
+    font-size: 14px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+}
 
-        .edge-actions {
-            cursor: pointer;
-            opacity: 0.5;
-            transition: opacity 0.2s ease;
+.action-btn:hover {
+    background: rgba(255, 255, 255, 0.3);
+}
 
-            &:hover {
-                opacity: 1;
-            }
-        }
-    }
+.action-btn.danger:hover {
+    background: #f44336;
+}
+
+.entity-columns {
+    padding: 8px 0;
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.entity-column {
+    padding: 6px 12px;
+    border-bottom: 1px solid #eee;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 14px;
+}
+
+.entity-column:hover {
+    background-color: #f5f5f5;
+}
+
+.entity-column.primary-key {
+    font-weight: bold;
+    background-color: rgba(255, 235, 59, 0.1);
+}
+
+.entity-column.foreign-key {
+    font-style: italic;
+    background-color: rgba(3, 169, 244, 0.1);
+}
+
+.key-indicator {
+    margin-left: 4px;
+    font-size: 10px;
 }
 
 /* Properties panel */
@@ -248,226 +326,78 @@
     top: 80px;
     right: 20px;
     width: 300px;
-    height: 500px;
-    max-height: calc(100vh - 80px);
-    background: white;
+    background-color: white;
     border-radius: 4px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
-    z-index: 1000;
-    padding: 16px;
-    cursor: move;
-    /* Show drag cursor */
-    user-select: none;
-    /* Prevent text selection while dragging */
-    display: flex;
-    flex-direction: column;
-    overflow: auto;
-
-    .panel-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 16px;
-        padding: 16px;
-        border-bottom: 1px solid #eeeeee;
-        cursor: move;
-        flex-shrink: 0;
-
-        h3 {
-            margin: 0;
-            font-size: 18px;
-            font-weight: 500;
-        }
-    }
-
-    .panel-content {
-        padding: 16px;
-        overflow-y: auto;
-        flex-grow: 1;
-        min-height: 0;
-        cursor: default;
-
-        /* Reset cursor for the content area */
-            &::-webkit-scrollbar {
-            width: 6px;
-        }
-        &::-webkit-scrollbar-track {
-            background: #f1f1f1;
-            border-radius: 3px;
-        }
-        &::-webkit-scrollbar-thumb {
-            background: #cccccc;
-            border-radius: 3px;
-        }
-        &::-webkit-scrollbar-thumb:hover {
-            background: #aaaaaa;
-        }
-    
-    }
-
-    &.dragging {
-        opacity: 0.9;
-        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
-    }
-
-    /* Make form fields take full width */
-    .full-width {
-        width: 100%;
-    }
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    z-index: 30;
+    overflow: hidden;
+    transition: transform 0.3s ease;
 }
 
-/* Helper classes */
-.success-notification {
-    background-color: #4caf50;
-    color: white;
-}
-
-.error-notification {
-    background-color: #f44336;
-    color: white;
-}
-
-/* Test nodes for direct DOM rendering */
-.test-nodes {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    z-index: 1000;
-    /* Enable pointer events for interaction */
-    pointer-events: auto;
-}
-
-.test-node {
-    position: absolute;
+.panel-header {
     background-color: #1976d2;
     color: white;
-    padding: 10px;
+    padding: 12px 16px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    cursor: move;
+}
+
+.panel-header h3 {
+    margin: 0;
+    font-size: 16px;
+}
+
+.panel-content {
+    padding: 16px;
+    max-height: 70vh;
+    overflow-y: auto;
+}
+
+.full-width {
+    width: 100%;
+}
+
+.columns-list {
+    margin-top: 16px;
+}
+
+.column-item {
+    margin-bottom: 16px;
+    padding: 8px;
+    border: 1px solid #ddd;
     border-radius: 4px;
-    min-width: 180px;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
-    z-index: 1100;
-    pointer-events: auto;
-    /* Enable pointer events for interaction */
-    font-size: 14px;
-    font-weight: bold;
-    border: 2px solid #0d47a1;
-    overflow: hidden;
-    cursor: pointer;
-    /* Add cursor to indicate it's interactive */
-    transition: transform 0.2s, box-shadow 0.2s;
-
-    &:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
-    }
-
-    &.selected {
-        border: 2px solid #ffeb3b;
-        box-shadow: 0 0 0 2px #ffeb3b, 0 4px 15px rgba(0, 0, 0, 0.3);
-    }
-
-    &-header {
-        font-size: 16px;
-        font-weight: bold;
-        padding: 8px;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.5);
-        text-align: center;
-        background-color: rgba(0, 0, 0, 0.1);
-    }
-
-    &-columns {
-        padding: 8px;
-    }
-
-    &-actions {
-        display: flex;
-        justify-content: flex-end;
-        padding: 5px;
-        border-top: 1px solid rgba(255, 255, 255, 0.3);
-        background-color: rgba(0, 0, 0, 0.1);
-
-        .action-btn {
-            background: rgba(255, 255, 255, 0.2);
-            border: none;
-            border-radius: 3px;
-            color: white;
-            width: 24px;
-            height: 24px;
-            margin-left: 5px;
-            cursor: pointer;
-            font-size: 12px;
-            padding: 0;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: background-color 0.2s;
-
-            &:hover {
-                background: rgba(255, 255, 255, 0.4);
-            }
-
-            &.danger:hover {
-                background: rgba(255, 0, 0, 0.6);
-            }
-        }
-    }
+    background-color: #fafafa;
 }
 
-.test-column {
-    font-size: 12px;
-    padding: 5px;
-    margin: 3px 0;
-    border-radius: 3px;
-    background-color: rgba(255, 255, 255, 0.1);
-
-    &.primary-key {
-        font-weight: bold;
-        background-color: rgba(255, 255, 0, 0.2);
-    }
-
-    &.foreign-key {
-        font-style: italic;
-        background-color: rgba(0, 255, 255, 0.2);
-    }
+.column-details {
+    display: flex;
+    gap: 8px;
 }
 
-.key-indicator {
-    margin-left: 5px;
-    font-size: 10px;
+.column-name-field {
+    flex: 2;
 }
 
-/* Floating context menu */
-.floating-menu {
-    position: absolute;
-    z-index: 2000;
-    background-color: white;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
-    border-radius: 4px;
-    min-width: 180px;
-    overflow: hidden;
-
-    .menu-item {
-        padding: 8px 12px;
-        cursor: pointer;
-        transition: background-color 0.2s;
-
-        &:hover {
-            background-color: #f5f5f5;
-        }
-
-        &.danger {
-            color: #f44336;
-
-            &:hover {
-                background-color: #ffebee;
-            }
-        }
-    }
+.column-type-field {
+    flex: 1;
 }
 
-/* Angular Material menu customizations */
+.column-flags {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 8px;
+}
+
+.button-row {
+    margin-top: 16px;
+    display: flex;
+    justify-content: flex-end;
+}
+
+/* Context menu styles */
 .warn-menu-item {
     color: #f44336;
 }
@@ -481,20 +411,14 @@
     position: absolute;
     bottom: 20px;
     right: 20px;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
     background-color: white;
     border-radius: 4px;
-    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+    display: flex;
+    flex-direction: column;
+    z-index: 30;
+}
+
+.zoom-controls button {
     padding: 4px;
-    z-index: 10;
-
-    button {
-        background-color: white;
-
-        &:hover {
-            background-color: #f5f5f5;
-        }
-    }
 }
